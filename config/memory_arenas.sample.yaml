@@ -19,18 +19,18 @@ arenas:
       yaw: 0.0
       pitch: 0.0
     player:
-      hp_addr: null            # e.g., 0x12345678
-      stam_addr: null          # e.g., 0x12345678
-      pos_addr: null           # e.g., 0x12345678
+      hp_addr: null # e.g., 0x12345678
+      stam_addr: null # e.g., 0x12345678
+      pos_addr: null # e.g., 0x12345678
     boss:
-      hp_addr: null            # e.g., 0x12345678
-      state_addr: null         # e.g., 0x12345678
-      ai_state_addr: null      # e.g., 0x12345678
+      hp_addr: null # e.g., 0x12345678
+      state_addr: null # e.g., 0x12345678
+      ai_state_addr: null # e.g., 0x12345678
     flags:
-      in_combat_addr: null     # e.g., 0x12345678
-      loading_addr: null       # e.g., 0x12345678
+      in_combat_addr: null # e.g., 0x12345678
+      loading_addr: null # e.g., 0x12345678
     second_phase:
-      trigger_flag_addr: null  # e.g., 0x12345678
+      trigger_flag_addr: null # e.g., 0x12345678
     notes: "Fill addresses for your Elden Ring version; leave numeric spawn as needed."
 
   # Minimal template for a new arena (duplicate and edit)
@@ -44,5 +44,3 @@ arenas:
     flags: { in_combat_addr: null, loading_addr: null }
     second_phase: { trigger_flag_addr: null }
     notes: "Use this as a starting point for new bosses."
-
-
