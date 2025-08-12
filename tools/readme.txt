@@ -1,0 +1,151 @@
+Elden Ring All in One Table
+
+This will only Show and Explain the Most basic Things and doesnt explain every Function in the Table bc that is simply to much.
+You are meant to get a slight understanding of the Functions in the Table with this and nothing more for Questions and Concerns there is always the Discord Server
+
+
+Main Header
+1. [ Enable ]                    | This will Enable the Table and Automatically attach it to the right Process.
+2. [Info and FAQ]                | This will Show you the Credits for the Table and some of the most common Issues and their fixes. Also will show the color coding.
+3. [Support Discord]             | This will Bring you right to our Discord where you can ask for Help after Reading our tutorials and FAQ. discord.gg/elden-ring.
+4. [ID master spreadsheet]       | This will Bring you to our Master Spreadsheet with every Important ID you might need.
+5. [Compact Mode]                | This will close the Scan Part of CE if you dont need it and want the extra Space.
+
+
+Give Yourself Items and Runes
+1. ItemGib v2.1                  | This will open up a second Window with a User Interface for you to add Any Items you want to your Character. 
+2. GigaGivb                      | This will allow you to add All items of a Specific type like Arrows for example at once. 
+3. Add Runes                     | This will allow you to simply add any Amount of Runes you want.  
+4. Rune Muliplier                | This will Muliply the Amount of Runes you get for Killing Enemies etc. by x Amount.
+  
+5. Selected Weapon               | This will allow you to Change a Weapons Base Stats by howering over it in your Inventory.
+6. Selected Armor                | This will allow you to Change a Armors Base Stats by howering over it in your Inventory.
+7. Selected Item                 | This will allow you to Change a Items Quantity by howeing over it in your Inventory.
+
+8. Inventory Editor              | This will allow you to Edit your Inventory Items by Quantity and Remove them Completly aswell
+9. AddInventoryEquip             | Basic Version of ItemGib 2.1 which will be usable with Seamless-Coop
+
+[ Player Status ]
+1. Name                          | Your Characters Name dont change it via the Table or it can break your entire Save
+2. Last Grace Visited            | Last Grace you rested at
+3. ChrType                       | Your Character Type
+4. TeamType                      | Your Team Type Change this to add white Phantom look or other Visual Changes
+5. Save Slot                     | Indicates which Slot your Save File is in
+
+[ Character Data ]
+Base Info
+1. PlayAnimSpeed                 | Controlls the Players Animation Speed for Running Striking everything
+
+Character Flags                  | Names are pretty clear
+
+Attributes                       | Your Characters Attributes dont change these Manually or it will get you banned if you go online
+1. Uncap Stats                   | This will Uncap your Attributes and Max LvL it is only Visual tho you will get no Actual effect out of it.
+2. Humanity                      | Leftover from Dark Souls has no actual use in ER
+
+Status Effect Resist             | Lets you change your Resistance for each Status Effect Individually 
+
+ChrAsm                           | Allows you to Edit equiped Weapons Armor and Accessorys 
+
+ChrDbg                           | All Debug Flags involving the Player. Names are pretty Clear
+
+PlayerParam                      | All Player Infos
+
+EquipMagicData                   | Allows you to Equip Magic for each Slot through the Table
+
+GestureGameData 
+1. Gesture Equip Data            | Gestures you have Equiped
+2. Gesture Unlock Data           | Shows you which Gestures are Locked/Unlocked
+3. Unlock All Gestures           | Does exactly what it Says
+4. Add_Gesture                   | Basically ItemGib but for Gestures
+5. Perform Gestures              | Will Play the Selected Gesture
+
+Face Data                        | All Pointers for your Face allows you to change Appearance
+
+Model and Body                   | Allows you to Change Body Proportions and Size
+
+Animation                        | Shows Info related to Current and Idle Animation aswell as Animation Speed
+
+SpecialEffect                    | Allows you to add Effects 
+
+ChrRideModule                    | Info Related to Torrent
+
+Thoughness                       | Self Explanatory
+
+SuperArmor                       | Self Explanatory
+
+[ Scripts ]
+1.ApplyEffect                    | Allows you to Apply any Effect to yourself
+
+[ Fast Travel and Warp ]         | Allows you to Force TP to a selected Grace
+
+1. Show all Graces               | Will Show all Graces for the Session. Not Permanent
+2. Enable FastTravel In Dungeons | Allows you to use the Maps Graces to Warp in Dungeons
+3. Map In Combat                 | Lets you use the Map In Combat
+
+[ Teleport, Coords, NoClip/FreeCam ]
+
+1. AOB Teleport                  | Only Permanent Way of Saving and using Coordinates in this Game
+2. NPC Coords                    | Also allows you to Save and use Coords but only until you have a Loading Screen or use a Grace. Also can TP all Enititys to a Location
+3. NoClip/Freecam                | NoClip will only work with Keyboard and Mouse
+4. Camera Coords                 | Let you change the View onto your Character
+
+[ ParamPatcher ]                 | Way to many Functions to Explain like this many Tutorials are already on our Server
+Weapon                           | Allows you to Edit everything about your Weapon including AOW, Effects, Movement etc
+Armor                            | Allows you to Edit everything about your Armor including Resistances, Effects etc
+Talisman                         | Allows you to Edit everything about your Talisman 
+Goods                            | Allows you to Edit everything about your Goods including Sell Prices if they are dropable or not etc
+Magic                            | Allows you to Edit everything about your Magic and even Lets you make your own 
+Ash of War                       | Allows you to Edit everything about your AOW
+Attack                           | Allows you to Edit everything about your Attacks including Damage
+Effect                           | Allows you to Edit everything about your Effects including Duration 
+Bullet                           | Allows you to Edit everything about your Bullets and lets you make new Combinations and Effects
+NPC Param                        | Allows you to Edit TeamType and all other Statistics for a Selected NPC
+Buddy Param                      | Allows you to Edit your Spirit Summons and even lets you make your own
+Advanced Mode                    | Includes way more Params and possibilitys than you can Imagine 
+
+Logger                           | Lets you Log Effect-,Attack-,Bullet-IDs
+Save                             | Will Save your Param Changes as a Script in "Saved Scripts Goes Here"
+
+[ Alt Param Patcher ]            | Includes some existing Scripts and Tutorials
+
+[ World / Npc Flags ]            
+Flags Logger                     | Allows you to Log Event Flags and Directly Save them to your Table
+Revive Bosses                    | Allows you to Revive each Boss individually or all at once
+Whetblades                       | Allows you to Lock/Unlock the Ability to change Affinities 
+Cookbooks                        | Allows you to Lock/Unlock the Cookbooks
+NPC                              | Allows you to Reive each NPC individually or all at once
+Maps                             | Allows you to Lock/Unlock the Maps
+Sites of Grace                   | Allows you to Lock/Unlock the Sites of Grace
+Buildings                        | Allows you to Lock/Unlock the Building Permanently
+Twin Maiden Husk                 | Allows you to Add/Remove Bell Bearings from the TMH 
+
+[ NPC ]
+Targeted Enemy                   | Allows you to Change and Edit a Targeted Enemies Stats
+Display Target's Status          | Allows you to See the Targets Resistances HP etc
+Character Spawner                | Allows you to Spawn any Character
+NPC Manager                      | Shows you NPCs Stats and allows you to Edit them aswell
+
+Info:
+
+<Script>                         | Are activated by just Checking the Box infront of the Description
+Pointers/P->78343237B            | Are Edited by Changing the Value usually from 0 to 1 or 1 to 0 most Pointers in the Table are Binary 
+
+
+-Zei
+
+                                          CREDITS AND CONTRIBUTIONS
+
+-Team Hexinton (Everything else that hasn't been mentioned bellow)
+-Pyre (Research, countless countributions)
+-CarlosM (Event Flags contribution)
+-Gideon25 (Some of the player script)
+-NBOT (Lights, colors, debug and research
+-Pav (Debug table, debug stuff and research)
+-limnoon (Event Flags contribution)
+-DatNoobDoe (Gestures)
+-Zullie (Reviving boss Event flags)
+-The Grand Archives (Warp, Damage management, misc character data, Alt Param Patcher)
+-ArchMagix (Cookboks flags)
+-Depul (Site of grace flags)
+-Zodiacsl125 (table contributions)
+-Zei (WorldFlags: Buildings;TMH additions,a few Scripts)

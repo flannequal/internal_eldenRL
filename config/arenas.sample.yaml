@@ -1,0 +1,21 @@
+# Arena metadata (per boss)
+# Copy to config/arenas.yaml and fill per-arena info.
+
+version: 1
+process_name: eldenring.exe
+
+arenas:
+  - id: 8
+    name: Beastman
+    map: Crumbling Farum Azula
+    nearest_bonfire_key: "Crumbling Farum Azula - Dragon Temple"
+    second_phase:
+      trigger_flag_addr: null # fill when known
+    notes: "Fill spawn coords in coordinates.yaml; verify addresses per version."
+
+  - id: 1
+    name: Template Boss
+    map: Unknown
+    nearest_bonfire_key: ""
+    second_phase: { trigger_flag_addr: null }
+    notes: "Template entry."

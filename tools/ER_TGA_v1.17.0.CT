@@ -8843,7 +8843,8 @@ writeByte(EquipInventoryDataIdx + 5, -1)
 
 [DISABLE]
 deAlloc(EquipInventoryDataIdx)
-EquipInventoryDataIdx = nil</AssemblerScript>
+EquipInventoryDataIdx = nil
+</AssemblerScript>
               <CheatEntries>
                 <CheatEntry>
                   <ID>100584</ID>
@@ -9039,7 +9040,6 @@ end
 4:Goods only
 8:Gem only
 </DropDownList>
-                  <LastState Value="0" RealAddress="13FFC0005"/>
                   <ShowAsSigned>1</ShowAsSigned>
                   <VariableType>Byte</VariableType>
                   <Address>EquipInventoryDataIdx+5</Address>
@@ -9105,7 +9105,8 @@ end
 
 disableMemrec(memrec)
 
-[DISABLE]</AssemblerScript>
+[DISABLE]
+</AssemblerScript>
                 </CheatEntry>
               </CheatEntries>
             </CheatEntry>
@@ -17801,7 +17802,7 @@ dropdown_memrec.DropDownLinkedMemrec = "BonfireId"
                     <CheatEntry>
                       <ID>1104</ID>
                       <Description>"Location"</Description>
-                      <DropDownListLink>BonfireId</DropDownListLink>
+                      <DropDownListLink>BonfireIdDLC</DropDownListLink>
                       <ShowAsSigned>0</ShowAsSigned>
                       <VariableType>4 Bytes</VariableType>
                       <Address>warp_data</Address>
@@ -23499,7 +23500,8 @@ $process+467994:
 movaps xmm0,[rsp+40]
 movups [rbx+70],xmm0
 
-dealloc(physics_update_hook)</AssemblerScript>
+dealloc(physics_update_hook)
+</AssemblerScript>
                 </CheatEntry>
               </CheatEntries>
             </CheatEntry>
@@ -94887,7 +94889,8 @@ ef.batchSetFlags(flagsOn, 1, "RanniFlagsThread")
 disableMemrec(memrec, function() return not ef.RanniFlagsThread end)
 
 [DISABLE]
-ef.RanniFlagsThread = false</AssemblerScript>
+ef.RanniFlagsThread = false
+</AssemblerScript>
                 </CheatEntry>
               </CheatEntries>
             </CheatEntry>
@@ -111968,7 +111971,8 @@ ef.batchSetFlags(flags, 1, "GracesThread")
 disableMemrec(memrec, function() return not ef.GracesThread end)
 
 [DISABLE]
-ef.GracesThread = false</AssemblerScript>
+ef.GracesThread = false
+</AssemblerScript>
                 </CheatEntry>
                 <CheatEntry>
                   <ID>106852</ID>
@@ -112003,7 +112007,8 @@ ef.batchSetFlags(flags, 1, "WhetbladesThread")
 disableMemrec(memrec, function() return not ef.WhetbladesThread end)
 
 [DISABLE]
-ef.WhetbladesThread = false</AssemblerScript>
+ef.WhetbladesThread = false
+</AssemblerScript>
                 </CheatEntry>
                 <CheatEntry>
                   <ID>106853</ID>
@@ -112134,7 +112139,8 @@ ef.batchSetFlags(flags, 1, "CookbooksThread")
 disableMemrec(memrec, function() return not ef.CookbooksThread end)
 
 [DISABLE]
-ef.CookbooksThread = false</AssemblerScript>
+ef.CookbooksThread = false
+</AssemblerScript>
                 </CheatEntry>
                 <CheatEntry>
                   <ID>106854</ID>
@@ -112194,7 +112200,8 @@ ef.batchSetFlags(flags, 1, "MapsThread")
 disableMemrec(memrec, function() return not ef.MapsThread end)
 
 [DISABLE]
-ef.MapsThread = false</AssemblerScript>
+ef.MapsThread = false
+</AssemblerScript>
                 </CheatEntry>
                 <CheatEntry>
                   <ID>106855</ID>
@@ -112470,7 +112477,8 @@ ef.batchSetFlags(flags, 1, "SummoningPoolsThread")
 disableMemrec(memrec, function() return not ef.SummoningPoolsThread end)
 
 [DISABLE]
-ef.SummoningPoolsThread = false</AssemblerScript>
+ef.SummoningPoolsThread = false
+</AssemblerScript>
                 </CheatEntry>
                 <CheatEntry>
                   <ID>106856</ID>
@@ -112495,7 +112503,8 @@ ef.batchSetFlags(flags, 1, "ColosseumsThread")
 disableMemrec(memrec, function() return not ef.ColosseumsThread end)
 
 [DISABLE]
-ef.ColosseumsThread = false</AssemblerScript>
+ef.ColosseumsThread = false
+</AssemblerScript>
                 </CheatEntry>
               </CheatEntries>
             </CheatEntry>
@@ -118610,16 +118619,24 @@ init()
 
 [DISABLE]
 if syntaxcheck then return end
-clean()</AssemblerScript>
+clean()
+</AssemblerScript>
               <CheatEntries>
                 <CheatEntry>
                   <ID>106157</ID>
                   <Description>"Category"</Description>
                   <DropDownList ReadOnly="1" DescriptionOnly="1" DisplayValueAsItem="1">0:None
-  </DropDownList>
+1:Grace
+2:Whetblades
+3:Cookbook
+4:Maps
+5:Ash of War (Duplication Menu)
+6:Bell Bearings
+7:Bosses
+</DropDownList>
                   <ShowAsSigned>0</ShowAsSigned>
                   <VariableType>4 Bytes</VariableType>
-                  <Address>FlagManagerFilter</Address>
+                  <Address>22A40C30000</Address>
                 </CheatEntry>
               </CheatEntries>
             </CheatEntry>
@@ -132087,7 +132104,8 @@ registersymbol(TargetCoords)
 autoAssemble([[
 dealloc(TargetCoords)
 unregistersymbol(TargetCoords)
-]])</AssemblerScript>
+]])
+</AssemblerScript>
               <CheatEntries>
                 <CheatEntry>
                   <ID>107907</ID>
@@ -152857,7 +152875,8 @@ end
 deAlloc(equipItem_data)
 equipItem_data = nil
 equipItem = nil
-unequipItem = nil</AssemblerScript>
+unequipItem = nil
+</AssemblerScript>
                     </CheatEntry>
                     <CheatEntry>
                       <ID>108242</ID>
@@ -153112,7 +153131,8 @@ function ef.batchSetFlags(flagTable, state, threadName)
 end
 
 [DISABLE]
-ef = nil</AssemblerScript>
+ef = nil
+</AssemblerScript>
                     </CheatEntry>
                     <CheatEntry>
                       <ID>108245</ID>
@@ -153660,7 +153680,8 @@ getAccessoryName = nil
 getMagicName = nil
 getArtsName = nil
 getNpcName = nil
-getPlaceName = nil</AssemblerScript>
+getPlaceName = nil
+</AssemblerScript>
                     </CheatEntry>
                     <CheatEntry>
                       <ID>108256</ID>
@@ -153790,7 +153811,8 @@ function tga.writeWCStr(address, str, count)
     writeBytes(address, str)
 end
 
-[DISABLE]</AssemblerScript>
+[DISABLE]
+</AssemblerScript>
                     </CheatEntry>
                   </CheatEntries>
                 </CheatEntry>
@@ -154139,4 +154161,974 @@ ShopMenu = nil
       </CheatEntries>
     </CheatEntry>
   </CheatEntries>
+  <UserdefinedSymbols>
+    <SymbolEntry>
+      <Name>buffs</Name>
+      <Address>70634204</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>afish</Name>
+      <Address>37CB8990</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>_playerbase</Name>
+      <Address>0BCB0000</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>recipe1</Name>
+      <Address>1222F75D</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>recipe2</Name>
+      <Address>1222F76C</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>recipe3</Name>
+      <Address>1222F77D</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>ivy</Name>
+      <Address>24FDA2DE</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>_infmp</Name>
+      <Address>18CE1070</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>_infammo</Name>
+      <Address>18CE7079</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>_fastuse</Name>
+      <Address>18CE7323</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>_fastuse2</Name>
+      <Address>18CE1FFC</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>_infplacing</Name>
+      <Address>18CF60E2</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>_fastwater</Name>
+      <Address>2775519B</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>_minvctimer</Name>
+      <Address>164A375E</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>timer_aob</Name>
+      <Address>0B851EE5</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>minionstr</Name>
+      <Address>1C3B3C78</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>magicstr</Name>
+      <Address>1C3B3C6A</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>wardingdef</Name>
+      <Address>1C3BA46A</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>minioncount</Name>
+      <Address>206D4213</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>players</Name>
+      <Address>10D83470</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>GameDataMan</Name>
+      <Address>7FF74C34DF38</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>GameMan</Name>
+      <Address>7FF74C359918</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FieldArea</Name>
+      <Address>7FF74C3591D8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>MsgRepository</Name>
+      <Address>7FF74C36D4F8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>AnimThreadMan</Name>
+      <Address>7FF74C34AD68</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSServerInterface</Name>
+      <Address>7FF74C35DE98</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>AnibndRepository</Name>
+      <Address>7FF74C36B5A8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSHavokMan</Name>
+      <Address>7FF74C366060</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSSound</Name>
+      <Address>7FF74C373CD8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSNetMan</Name>
+      <Address>7FF74C34AE60</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>MapItemMan</Name>
+      <Address>7FF74C357A50</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSMenuMan</Name>
+      <Address>7FF74C35B7B0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>WorldChrMan</Name>
+      <Address>7FF74C355F88</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSActionButtonRegionSystem</Name>
+      <Address>7FF74C35E4C8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSEventFlagMan</Name>
+      <Address>7FF74C358448</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSFD4VirtualMemoryFlag</Name>
+      <Address>7FF74C358448</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSPlatformNetworkMan</Name>
+      <Address>7FF74C36ADB8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSEventMan</Name>
+      <Address>7FF74C3586F8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSNetworkUserManager</Name>
+      <Address>7FF74C36A418</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSWorldGeomMan</Name>
+      <Address>7FF74C359BA8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSBlockPlayerList</Name>
+      <Address>7FF74C369660</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSRemo</Name>
+      <Address>7FF74C35EA58</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>RendMan</Name>
+      <Address>7FF74C36B0C0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FaceGenMan</Name>
+      <Address>7FF74C34AFE0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>TpfRepository</Name>
+      <Address>7FF74C363FB8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSPlaygo</Name>
+      <Address>7FF74CB78268</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4TaskManager</Name>
+      <Address>7FF74CE4D170</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSDlc</Name>
+      <Address>7FF74C376BD8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSAutoInvadePoint</Name>
+      <Address>7FF74C35E548</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>BehbndRepository</Name>
+      <Address>7FF74C36B9C8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FontRepository</Name>
+      <Address>7FF74C3629D8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>HkxpwvRepository</Name>
+      <Address>7FF74C368F78</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>HkxRepository</Name>
+      <Address>7FF74C369238</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FlverRepository</Name>
+      <Address>7FF74C362878</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4HkClothDataRepository</Name>
+      <Address>7FF74CE4D258</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4HkClothClm2Repository</Name>
+      <Address>7FF74CE4D238</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSEmedfRepository</Name>
+      <Address>7FF74C36C108</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSEmeldRepository</Name>
+      <Address>7FF74C36C1F8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSEmevdRepository</Name>
+      <Address>7FF74C36C2E8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSHavokCompendiumRepository</Name>
+      <Address>7FF74C3690D8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSMapbndRepository</Name>
+      <Address>7FF74C36CB38</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSEddRepository</Name>
+      <Address>7FF74C36BDC8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>TexRepository</Name>
+      <Address>7FF74C363E58</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>ExpbRepository</Name>
+      <Address>7FF74C36C3D8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FfxreslistRepository</Name>
+      <Address>7FF74C36C698</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FfxRepository</Name>
+      <Address>7FF74C36C538</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>GeombndRepository</Name>
+      <Address>7FF74C36B708</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>GeomhkxbndRepository</Name>
+      <Address>7FF74C36B868</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>GfxRepository</Name>
+      <Address>7FF74C36C7F8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSGparamRepository</Name>
+      <Address>7FF74C362B38</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>IvInfoRepository</Name>
+      <Address>7FF74C362C98</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>LuaRepository</Name>
+      <Address>7FF74C36C9D8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>MfrRepository</Name>
+      <Address>7FF74C36CD88</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>MpwRepository</Name>
+      <Address>7FF74C36CEE8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>MsbRepository</Name>
+      <Address>7FF74C36D1B8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>MtdRepository</Name>
+      <Address>7FF74C3630A0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSMtmskRepository</Name>
+      <Address>7FF74C35CBF0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>NvcRepository</Name>
+      <Address>7FF74C3694F8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>NvaRepository</Name>
+      <Address>7FF74C369398</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>OnavRepository</Name>
+      <Address>7FF74C370B28</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>ParamRepository</Name>
+      <Address>7FF74C370D08</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4ParamdefRepository</Name>
+      <Address>7FF74CE4D2B8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>PartsbndRepository</Name>
+      <Address>7FF74C36CC98</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>PartsRelationinfobndRepository</Name>
+      <Address>7FF74C3720E0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>RumblebndRepository</Name>
+      <Address>7FF74C372418</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>ShaderbdleRepository</Name>
+      <Address>7FF74C3632E8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CpoRepository</Name>
+      <Address>7FF74C3633D8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>DpoRepository</Name>
+      <Address>7FF74C363538</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>GpoRepository</Name>
+      <Address>7FF74C3637F8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>HpoRepository</Name>
+      <Address>7FF74C363958</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>PpoRepository</Name>
+      <Address>7FF74C363AB8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>VpoRepository</Name>
+      <Address>7FF74C363C88</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>ScaleformTexRepository</Name>
+      <Address>7FF74C372510</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>EsdRepository</Name>
+      <Address>7FF74C36BF28</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSHkBehManager</Name>
+      <Address>7FF74C3652C8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4PadManager</Name>
+      <Address>7FF74CE4DC20</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>SoloParamRepository</Name>
+      <Address>7FF74C371EE8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSGaitem</Name>
+      <Address>7FF74C359890</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSItemGetMenuMan</Name>
+      <Address>7FF74C35C3B0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSPS5Activity</Name>
+      <Address>7FF74CB78E98</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSPcKeyConfig</Name>
+      <Address>7FF74C34DEA8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSAdhocDraw</Name>
+      <Address>7FF74C364438</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSFlipper</Name>
+      <Address>7FF74CB79AD8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>ChrresRepository</Name>
+      <Address>7FF74C355500</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSGraphics</Name>
+      <Address>7FF74C361C48</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSWindow</Name>
+      <Address>7FF74CB7B890</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>UserConfig</Name>
+      <Address>7FF74CB794F8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSGuiManager</Name>
+      <Address>7FF74C3623F0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSCamera</Name>
+      <Address>7FF74C352968</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>EntityThumbnailMan</Name>
+      <Address>7FF74C376F58</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSTask</Name>
+      <Address>7FF74CB7BE08</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSCloth</Name>
+      <Address>7FF74C365F28</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSBehavior</Name>
+      <Address>7FF74C365B38</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>EneDatMan</Name>
+      <Address>7FF74C3557E8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSWorldNvmManager</Name>
+      <Address>7FF74C365870</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSHkAiManager</Name>
+      <Address>7FF74C364AE8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSScaleform</Name>
+      <Address>7FF74C373148</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSEntryfilelistRepository</Name>
+      <Address>7FF74C351028</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSSfx</Name>
+      <Address>7FF74C3739B8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>MoWwiseMan</Name>
+      <Address>7FF74C3742B0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>SoundEventCheckMan</Name>
+      <Address>7FF74C376AE8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSWorldAiManager</Name>
+      <Address>7FF74C3524E8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSRapidReentryHelper</Name>
+      <Address>7FF74C351188</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>WorldAreaTime</Name>
+      <Address>7FF74C3592F8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>WorldAreaWeather</Name>
+      <Address>7FF74C359380</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSTargetBankManager</Name>
+      <Address>7FF74C352110</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSStageDebug</Name>
+      <Address>7FF74C3574C8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSWorldWaypointManager</Name>
+      <Address>7FF74C352460</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSLuaConsoleServer</Name>
+      <Address>7FF74CB79B58</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSEzWorkPool</Name>
+      <Address>7FF74CB79A58</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>WorldChrManDbg</Name>
+      <Address>7FF74C356198</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>LuaDatMan</Name>
+      <Address>7FF74C351C88</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSBulletManager</Name>
+      <Address>7FF74C352748</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>DmgHitRecordMan</Name>
+      <Address>7FF74C3562D8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>LockTgtMan</Name>
+      <Address>7FF74C35A208</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>DmgMan</Name>
+      <Address>7FF74C356378</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>DamageCtrl</Name>
+      <Address>7FF74C356378</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSDistViewManager</Name>
+      <Address>7FF74C3575C0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSActionButtonMan</Name>
+      <Address>7FF74C35E408</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSFeMan</Name>
+      <Address>7FF74C35B880</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSDbgIdName</Name>
+      <Address>7FF74C375F18</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CsResMemStatistics</Name>
+      <Address>7FF74C372238</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSPlayRegionPointMan</Name>
+      <Address>7FF74C35E388</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>WorldHitMan</Name>
+      <Address>7FF74C35A0E0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSWorldTalkMan</Name>
+      <Address>7FF74CB7BB88</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSMemory</Name>
+      <Address>7FF74C3777A8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSOpenChrActivateThresholdRegionMan</Name>
+      <Address>7FF74C35E868</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSDisableHorseOverrideRegionMan</Name>
+      <Address>7FF74C35E5C8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSPlaylogSystem</Name>
+      <Address>7FF74CB786C8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSRideJumpRegionMan</Name>
+      <Address>7FF74C35E8E8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>RumbleMan</Name>
+      <Address>7FF74C357AE8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSHkShapeRepository</Name>
+      <Address>7FF74C368AE8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSPairAnimManager</Name>
+      <Address>7FF74C355DD8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>ThrowMan</Name>
+      <Address>7FF74C355DD8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSGxLoadBalancerHelper</Name>
+      <Address>7FF74C377058</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>ActPntMan</Name>
+      <Address>7FF74C35A178</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSEventRegionMan</Name>
+      <Address>7FF74C3587A0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSLuaEventMan</Name>
+      <Address>7FF74C357E48</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSLuaEventManager</Name>
+      <Address>7FF74C357E48</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSDelayDeleteMan</Name>
+      <Address>7FF74CB796A8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSGroupPlacementPointMan</Name>
+      <Address>7FF74C35E6D8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>ChrNonActiveBlockManager</Name>
+      <Address>7FF74C356258</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSLoadBalancer</Name>
+      <Address>7FF74C3770D8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSMsbPointMan</Name>
+      <Address>7FF74C36D478</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>WavbndRepository</Name>
+      <Address>7FF74C372590</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSSystemProperties</Name>
+      <Address>7FF74CB78DE8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSEmkSystem</Name>
+      <Address>7FF74C357BD0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSDbgEvent</Name>
+      <Address>7FF74C357FF8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>MsgTagMan</Name>
+      <Address>7FF74C36D500</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSFade</Name>
+      <Address>7FF74C362340</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSCheatEOS</Name>
+      <Address>7FF74C3755C8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSWorldObjActMan</Name>
+      <Address>7FF74C358348</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSEventFlagAllocList</Name>
+      <Address>7FF74C3583D0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSEventFlagUsageParamManager</Name>
+      <Address>7FF74C370C88</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>WorldMapMan</Name>
+      <Address>7FF74C35A320</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>EventNonActiveBlockManager</Name>
+      <Address>7FF74C358838</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>GeomNonActiveBlockManager</Name>
+      <Address>7FF74C359D98</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSEmkResMan</Name>
+      <Address>7FF74C36C088</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSWorldSceneDrawParamManager</Name>
+      <Address>7FF74C35F558</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSDrawGroupDebugManager</Name>
+      <Address>7FF74C357138</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>WorldSfxMan</Name>
+      <Address>7FF74C35F5F8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSDebugBankPlayerMng</Name>
+      <Address>7FF74C373A90</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSDbgDistMeasure</Name>
+      <Address>7FF74C3570B8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSWeatherLotRegionMan</Name>
+      <Address>7FF74C359270</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>WorldSoundMan</Name>
+      <Address>7FF74C35F708</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSHitMtrlMan</Name>
+      <Address>7FF74C3578A8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSMemLoadBalancer</Name>
+      <Address>7FF74C377158</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSWorldMapPointMan</Name>
+      <Address>7FF74C35E9B0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSFastTravelOverrideRegionMan</Name>
+      <Address>7FF74C35E660</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSMapPlaceNameOverrideRegionMan</Name>
+      <Address>7FF74C35E768</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSMultiForbiddenRegion</Name>
+      <Address>7FF74C35E7E8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSSightRateRegionMan</Name>
+      <Address>7FF74C3522E0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSEventState</Name>
+      <Address>7FF74C358078</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSGeomModelInsDelayCreator</Name>
+      <Address>7FF74C3599E8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSMouseMan</Name>
+      <Address>7FF74CB77820</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSNowLoadingHelper</Name>
+      <Address>7FF74C350EC8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSRegulationManager</Name>
+      <Address>7FF74C376C58</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>UserMan</Name>
+      <Address>7FF74CB79578</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4HkClothManager</Name>
+      <Address>7FF74CE4DCD8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSMovie</Name>
+      <Address>7FF74CB778A8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4RemoManager</Name>
+      <Address>7FF74CE4DD18</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4RemoHkxRepository</Name>
+      <Address>7FF74CE4DD70</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4MqbRepository</Name>
+      <Address>7FF74CE4DD40</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSPlacementDebugManager</Name>
+      <Address>7FF74C357348</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSDbgSignboardMng</Name>
+      <Address>7FF74C357448</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>GeomFlagSaveDataManager</Name>
+      <Address>7FF74C359D18</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSLod</Name>
+      <Address>7FF74C362740</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSKeyboardDebugMng</Name>
+      <Address>7FF74C3571C0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSFakeLoadingScreen</Name>
+      <Address>7FF74C364868</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSFD4Location</Name>
+      <Address>7FF74C362488</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSTaskGroup</Name>
+      <Address>7FF74CB7BE88</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSHkAiNvmRepository</Name>
+      <Address>7FF74C364DC8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSHkBehScriptAdapter</Name>
+      <Address>7FF74C365178</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSHkBehStringRepository</Name>
+      <Address>7FF74C365588</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSHkBehScriptRepository</Name>
+      <Address>7FF74C3653B8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSSessionManager</Name>
+      <Address>7FF74C3696F8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSTestUserNameManager</Name>
+      <Address>7FF74C36A7A8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>NetLocalDebugBufferQueue</Name>
+      <Address>7FF74C36A8B8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4HkEzDrawRigidBodyDispBufferManager</Name>
+      <Address>7FF74CE4DE00</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4ParameterManager</Name>
+      <Address>7FF74CE4DE78</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4ParamRepository</Name>
+      <Address>7FF74CE4DEA0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>SystemParamRepository</Name>
+      <Address>7FF74C371278</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSBudgetMonitor</Name>
+      <Address>7FF74C3748E8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSScaleformArabic</Name>
+      <Address>7FF74C372678</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSFD4MoWwisebankRepository</Name>
+      <Address>7FF74C12ED90</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSEblFileManager</Name>
+      <Address>7FF74C34B078</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSBugReportManager</Name>
+      <Address>7FF74C374C08</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4ReportSystem</Name>
+      <Address>7FF74CE4DF10</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSReportSystem</Name>
+      <Address>7FF74CB78FE8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSPerfMan</Name>
+      <Address>7FF74CB78168</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4PerformanceManager</Name>
+      <Address>7FF74CE4DF70</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4LoggerManager</Name>
+      <Address>7FF74CE4DF60</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSPanic</Name>
+      <Address>7FF74C376408</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSTrophy</Name>
+      <Address>7FF74CB79478</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>CSWordChecker</Name>
+      <Address>7FF74C36A838</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>EntityThumbnailProbe</Name>
+      <Address>7FF74C376FD8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4PerfManager</Name>
+      <Address>7FF74CE4DFD0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4DelayDeleteManager</Name>
+      <Address>7FF74CE4E080</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4RemoteUserInputSystem</Name>
+      <Address>7FF74CE4DDB8</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4EzDrawManager</Name>
+      <Address>7FF74CE4DDE0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4FontManager</Name>
+      <Address>7FF74CE4DDA0</Address>
+    </SymbolEntry>
+    <SymbolEntry>
+      <Name>FD4ParamNametdfRepository</Name>
+      <Address>7FF74CE4DE80</Address>
+    </SymbolEntry>
+  </UserdefinedSymbols>
 </CheatTable>
