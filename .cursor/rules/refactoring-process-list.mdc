@@ -6,7 +6,7 @@ globs:
 alwaysApply: false
 ---
 
-A comprehensive refactoring plan to replace existing project EldenRL's computer vision-based reset system with memory address manipulation for instant state resets, eliminating the need for hardcoded navigation sequences in `walkToBoss.py` and loading screen waits. <cite/>
+A comprehensive refactoring plan to replace existing project EldenRL's computer vision-based reset system (for a video-game reinforcement learning implementation )with memory address manipulation for instant state resets, eliminating the need for hardcoded navigation sequences in `walkToBoss.py` and loading screen waits. <cite/>
 
 
 This is a **massive architectural overhaul** requiring fundamental changes to the core systems. A detailed step-by-step plan to go through to achieve this:
