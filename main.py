@@ -18,7 +18,7 @@ if __name__ == '__main__':
         "PROCESS_NAME": "eldenring.exe",
         # SoulsGym backend uses `examples/data/eldenring/addresses.yaml` implicitly
         # Optional: path to YAML arenas for spawn defaults and notes
-        "MEMORY_CONFIG_PATH": r"config\memory_arenas.yaml",
+        "MEMORY_CONFIG_PATH": r"config/arenas.yaml",
         # Set to False to use real memory via SoulsGym backend
         "SIMULATE_MEMORY": False,
         # Disable inputs for dry-runs (set False for real playing)

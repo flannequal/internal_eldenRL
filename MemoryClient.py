@@ -71,14 +71,10 @@ class MemoryClient:
             return {}
 
     def _load_arenas_meta(self) -> None:
-        # Prefer new names; fall back to legacy memory_arenas.* if present
+        # Standardized to arenas.* only
         data = self._safe_load_yaml(os.path.join('config', 'arenas.yaml'))
         if not data:
             data = self._safe_load_yaml(os.path.join('config', 'arenas.sample.yaml'))
-        if not data:
-            data = self._safe_load_yaml(os.path.join('config', 'memory_arenas.yaml'))
-        if not data:
-            data = self._safe_load_yaml(os.path.join('config', 'memory_arenas.sample.yaml'))
         arenas = data.get('arenas', []) if isinstance(data, dict) else []
         for entry in arenas:
             try:
@@ -152,7 +148,9 @@ class MemoryClient:
             try:
                 curr = float(self._sg_game.player_hp)
                 max_hp = float(self._sg_game.player_max_hp)
-                return 0.0 if max_hp <= 0 else max(0.0, min(1.0, curr / max_hp))
+                ratio = 0.0 if max_hp <= 0 else max(0.0, min(1.0, curr / max_hp))
+                self._player_hp = ratio
+                return ratio
             except Exception:
                 return 0.0
         if self.simulate:
@@ -169,7 +167,9 @@ class MemoryClient:
             try:
                 curr = float(self._sg_game.player_sp)
                 max_sp = float(self._sg_game.player_max_sp)
-                return 0.0 if max_sp <= 0 else max(0.0, min(1.0, curr / max_sp))
+                ratio = 0.0 if max_sp <= 0 else max(0.0, min(1.0, curr / max_sp))
+                self._player_stamina = ratio
+                return ratio
             except Exception:
                 return 0.0
         if self.simulate:

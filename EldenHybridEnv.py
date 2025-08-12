@@ -44,6 +44,8 @@ class EldenHybridEnv(gym.Env):
         self.BOSS = int(config.get("BOSS", 1))
         self.BOSS_HAS_SECOND_PHASE = bool(config.get("BOSS_HAS_SECOND_PHASE", False))
         self.DESIRED_FPS = float(config.get("DESIRED_FPS", 24))
+        self.LOG_MEMORY_DEBUG = bool(config.get("LOG_MEMORY_DEBUG", False))
+        self.MEMORY_DEBUG_INTERVAL = int(config.get("MEMORY_DEBUG_INTERVAL", 1))
 
         # Discrete action space compatible with original env
         self.NUMBER_DISCRETE_ACTIONS = int(config.get("NUMBER_DISCRETE_ACTIONS", 22))
@@ -117,6 +119,17 @@ class EldenHybridEnv(gym.Env):
         reward, death, boss_death, duel_won = self.rewardGen.update(
             hp, stam, boss_hp, self.first_step
         )
+
+        # Optional debug logging for memory values
+        if self.LOG_MEMORY_DEBUG and (self.step_iteration % max(1, self.MEMORY_DEBUG_INTERVAL) == 0):
+            try:
+                pos = self.mem.read_player_position()
+            except Exception:
+                pos = (None, None, None)
+            print(
+                f"[MEM] step={self.step_iteration} hp={hp:.3f} stam={stam:.3f} boss_hp={boss_hp:.3f} "
+                f"pos=({pos[0]}, {pos[1]}, {pos[2]}) time_alive={time_alive:.2f}s"
+            )
 
         terminated = bool(death or boss_death or duel_won)
         truncated = bool((time.time() - self.t_start) > 600)
