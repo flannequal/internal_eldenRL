@@ -1,9 +1,9 @@
 import cv2
-import gym
+import gymnasium
 import mss
 import time
 import numpy as np
-from gym import spaces
+from gymnasium import spaces
 import pydirectinput
 import pytesseract                              # Pytesseract is not just a simple pip install.
 from EldenReward import EldenReward
