@@ -7,40 +7,55 @@ from typing import Any, Dict
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from MemoryClient import MemoryClient  # noqa: E402
-from EldenMemoryEnv import EldenMemoryEnv  # noqa: E402
+from EldenHybridEnv import EldenHybridEnv # noqa: E402
 
 
-def cmd_validate(config_path: str) -> int:
-    """Validate the arenas YAML file structure."""
-    client = MemoryClient(memory_config_path=config_path, simulate=True)
-    # Internal DB is private; rely on side effects of loader
-    if not os.path.isfile(config_path):
-        print(f"❌ Config file not found: {config_path}")
-        return 1
+def cmd_validate(root_dir: str) -> int:
+    """Validate modular configs in config/: arenas, coordinates, bonfires, addresses."""
     try:
         import yaml  # type: ignore
     except Exception:
         print("❌ PyYAML not installed. Install with: pip install pyyaml")
         return 1
 
-    with open(config_path, 'r', encoding='utf-8') as f:
-        data = yaml.safe_load(f) or {}
+    root_dir = root_dir or os.path.join('config')
+    paths = {
+        'arenas': [os.path.join(root_dir, 'arenas.yaml'), os.path.join(root_dir, 'arenas.sample.yaml')],
+        'coords': [os.path.join(root_dir, 'coordinates.yaml'), os.path.join(root_dir, 'coordinates.sample.yaml')],
+        'bonfires': [os.path.join(root_dir, 'bonfires.yaml'), os.path.join(root_dir, 'bonfires.sample.yaml')],
+        'addresses': [os.path.join(root_dir, 'addresses.yaml'), os.path.join(root_dir, 'addresses.sample.yaml')],
+    }
 
-    errors = []
-    if not isinstance(data, dict):
-        errors.append("Top-level YAML must be a mapping (dict)")
-    if data.get('version') is None:
-        errors.append("Missing 'version'")
-    arenas = data.get('arenas') or []
+    loaded: Dict[str, Dict[str, Any]] = {}
+    for key, candidates in paths.items():
+        data = None
+        for p in candidates:
+            if os.path.isfile(p):
+                with open(p, 'r', encoding='utf-8') as f:
+                    data = yaml.safe_load(f) or {}
+                break
+        if data is None:
+            print(f"❌ Missing config file for {key}: {candidates}")
+            return 2
+        loaded[key] = data
+
+    errors: list[str] = []
+    # arenas
+    arenas = loaded['arenas'].get('arenas') or []
     if not isinstance(arenas, list) or not arenas:
-        errors.append("'arenas' must be a non-empty list")
+        errors.append("arenas.yaml: 'arenas' must be a non-empty list")
+    # coords
+    coords = loaded['coords'].get('arenas') or []
+    if not isinstance(coords, list) or not coords:
+        errors.append("coordinates.yaml: 'arenas' must be a non-empty list")
     else:
-        for idx, arena in enumerate(arenas):
-            prefix = f"arena[{idx}]"
-            try:
-                _validate_arena(arena, prefix, errors)
-            except Exception as exc:
-                errors.append(f"{prefix}: exception during validation: {exc}")
+        for idx, a in enumerate(coords):
+            if 'player_spawn' not in a:
+                errors.append(f"coordinates.yaml arena[{idx}]: missing 'player_spawn'")
+
+    # addresses minimal check
+    if 'addresses' not in loaded['addresses']:
+        errors.append("addresses.yaml: missing 'addresses' map")
 
     if errors:
         print("❌ Validation failed:")
@@ -81,7 +96,7 @@ def cmd_sim_loop(iterations: int, boss: int, fps: float) -> int:
         "SIMULATE_MEMORY": True,
         "MEMORY_CONFIG_PATH": os.path.join("config", "memory_arenas.sample.yaml"),
     }
-    env = EldenMemoryEnv(config)
+    env = EldenHybridEnv(config)
     obs, info = env.reset()
     total_r = 0.0
     for i in range(iterations):
@@ -100,8 +115,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="eldenrl-tools", description="CLI for validation and simulation")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_val = sub.add_parser("validate", help="Validate arenas YAML structure")
-    p_val.add_argument("config_path", type=str, help="Path to arenas YAML")
+    p_val = sub.add_parser("validate", help="Validate config directory (arenas/coords/bonfires/addresses)")
+    p_val.add_argument("config_dir", type=str, nargs='?', default=os.path.join('config'), help="Config directory (default: ./config)")
 
     p_sim = sub.add_parser("sim_loop", help="Run a simulation loop (no game required)")
     p_sim.add_argument("iterations", type=int, help="Number of steps to simulate")
@@ -110,7 +125,7 @@ def main() -> int:
 
     args = parser.parse_args()
     if args.cmd == "validate":
-        return cmd_validate(args.config_path)
+        return cmd_validate(args.config_dir)
     if args.cmd == "sim_loop":
         return cmd_sim_loop(args.iterations, args.boss, args.fps)
     return 1

@@ -1,39 +1,33 @@
-# EldenRL (Hybrid) – Memory-based arenas with optional vision
+# EldenRL (Hybrid) – Single pipeline using vision + memory
 
-EldenRL now supports instant, memory-based resets for boss arenas while keeping the original vision-based observation loop available. You can train either:
+EldenRL now uses one unified environment that combines a real game image (for spatial context) with precise state read from game memory (hp, stamina, boss hp, etc.). Rewards and termination come from memory; the image is for perception of obstacles and motion.
 
-- MEMORY mode: No screen capture. Observations come from game memory (hp, stamina, boss hp, etc.).
-- VISION mode (legacy): Uses screenshots for observations, but resets are now instant and memory-based.
-
-The training stack remains built on OpenAI `gym` and Stable-Baselines3.
+The training stack remains based on OpenAI `gym` (Gymnasium) and Stable-Baselines3.
 
 ## Requirements
 
-- Windows 11 recommended
-- Elden Ring (single-player offline; fixed game version while reversing addresses)
+- Windows 10/11
+- Elden Ring running in single-player offline mode (fixed version while using memory addresses)
 - Python 3.9.13
 - Stable-Baselines3, PyTorch
-- MEMORY mode: PyYAML (and your chosen memory read/write backend when you implement it)
-- VISION mode: OpenCV, `mss`, Tesseract OCR
+- OpenCV, `mss`, Tesseract OCR (for image capture)
+- SoulsGym (for real Elden Ring memory access)
 
 ## Quick start
 
 1. Install dependencies (venv recommended)
-2. Choose mode in `main.py` via `ENV_MODE`: `"MEMORY"` or `"VISION"`
-3. For MEMORY mode:
-   - Copy `config/memory_arenas.sample.yaml` to `config/memory_arenas.yaml`
-   - Fill in addresses/coords for your target boss
-   - Set `MEMORY_CONFIG_PATH` in `main.py`
+2. Configure `main.py` (Hybrid is default)
+3. Ensure SoulsGym is installed and Elden Ring is running (offline) on a fixed game version
 4. Run `python main.py`
 
 ## Configuration
 
 `main.py` exposes the runtime config. Key fields:
 
-- `ENV_MODE`: `VISION` or `MEMORY`
-- `RESET_MODE`: In VISION env, set to `MEMORY` to enable instant resets (default)
 - `PROCESS_NAME`: game process (default: `eldenring.exe`)
-- `MEMORY_CONFIG_PATH`: YAML with per-boss arenas
+- `MEMORY_CONFIG_PATH`: optional YAML with per-boss arenas (spawn positions; used during reset)
+- `SIMULATE_MEMORY`: False to use real memory via SoulsGym; True for local dry-runs (no learning value)
+- `MONITOR`, `PYTESSERACT_PATH`, `DEBUG_MODE`: for image capture/display
 - `BOSS`, `BOSS_HAS_SECOND_PHASE`, `DESIRED_FPS` etc.
 
 YAML schema (example):
@@ -59,16 +53,15 @@ arenas:
 
 ```mermaid
 flowchart LR
-  A[SB3 PPO Agent] --> B[EldenMemoryEnv]
-  A -. legacy .-> L[EldenEnv - Vision]
+  A[SB3 PPO Agent] --> H[EldenHybridEnv]
 
-  B --> C[InputController]
+  H --> C[InputController]
   C --> G[Game]
 
-  B --> D[MemoryClient]
+  H --> D[MemoryClient]
   D <--> M[(Game Memory)]
 
-  B --> E[EldenRewardMemory]
+  H --> E[EldenRewardMemory]
 
   %% Data/config side
   D --> F[(ArenaDB YAML)]
@@ -86,27 +79,41 @@ flowchart LR
   D -. safety .-> AC
   AM -. authoring .-> F
 
-  %% Legacy vision stack (optional)
-  L --> C
-  L --> R[EldenReward - Vision]
+  %% Legacy envs kept for reference only
+  L[EldenEnv - Vision] -.deprecated .-> C
+  L -.deprecated .-> R[EldenReward - Vision]
 ```
 
-## Modes
+## Observation and rewards
 
-- MEMORY mode:
-  - Env: `EldenMemoryEnv`
-  - Observation: numeric state vector (hp, stamina, boss hp, time alive, arena phase)
-  - Reset: instant via `MemoryClient.reset_arena`
-- VISION mode (legacy):
-  - Env: `EldenEnv`
-  - Observation: image + hp/stamina from vision
-  - Reset: instant via `MemoryClient.reset_arena` (hybrid). No `walkToBoss.py` usage.
+- Observation (default):
+
+  - `img`: `(MODEL_HEIGHT, MODEL_WIDTH, 3)` uint8
+  - `prev_actions`: `(10, NUMBER_DISCRETE_ACTIONS, 1)` uint8
+  - `state`: `(5,)` float32 = `[hp, stamina, boss_hp, time_alive_s, arena_phase]`
+
+- Reward/termination: computed purely from memory values via `EldenRewardMemory`.
+
+## Requirements for real memory backend
+
+- SoulsGym installed and importable
+- Elden Ring process available and running offline
+- Addresses file for Elden Ring present (see `examples/data/eldenring/addresses.yaml`)
+- New game save recommended (stability/safety)
+
+If SoulsGym isn't available, set `SIMULATE_MEMORY=True` for local dry-runs (no learning value).
 
 ## Notes on safety and scope
 
 - Educational research only; single-player offline.
-- Addresses are version-specific; store them in YAML per boss.
+- Addresses are version-specific; keep your game version fixed while reversing.
 - Start with one arena and iterate.
+
+## Extending state and future work
+
+- Add more memory features: exact `player_pose`, `lock_on`, `in_combat`, FP/MP, debuffs, weapon data
+- When boss entity offsets are known, implement boss HP read/write and better arena resets
+- Optional signature scanning and version gating for robustness
 
 ## Contributing
 
@@ -115,4 +122,4 @@ flowchart LR
 
 ## Credits
 
-This project builds on the original EldenRL and community work. The vision pipeline remains available as a legacy option, while new development focuses on memory-based arenas.
+This project builds on the original EldenRL and SoulsGym work. The legacy vision-only env remains for reference, but all training should use the hybrid environment.

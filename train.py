@@ -3,7 +3,7 @@ import os
 
 
 def train(CREATE_NEW_MODEL, config):
-	print("🧠 Training will start soon. This can take a while to initialize...")
+	print("Training will start soon. This can take a while to initialize...")
 
 
 	TIMESTEPS = 1			#Learning rate multiplier.
@@ -19,18 +19,13 @@ def train(CREATE_NEW_MODEL, config):
 	models_dir = f"models/{model_name}/"
 	logdir = f"logs/{model_name}/"			
 	model_path = f"{models_dir}/PPO-1"
-	print("🧠 Folder structure created...")
+	print("Folder structure created...")
 
 
-    '''Initializing environment'''
-    env_mode = config.get("ENV_MODE", "VISION").upper()
-    if env_mode == "MEMORY":
-        from EldenMemoryEnv import EldenMemoryEnv  # Lazy import to avoid cv2/mss dependencies
-        env = EldenMemoryEnv(config)
-    else:
-        from EldenEnv import EldenEnv
-        env = EldenEnv(config)
-	print("🧠 EldenEnv initialized...")
+	'''Initializing environment (Hybrid only)'''
+	from EldenHybridEnv import EldenHybridEnv
+	env = EldenHybridEnv(config)
+	print("EldenHybridEnv initialized...")
 
 
 	'''Creating new model or loading existing model'''
@@ -41,14 +36,14 @@ def train(CREATE_NEW_MODEL, config):
 							n_steps=HORIZON_WINDOW,
 							verbose=1,
 							device='cpu')	#Set training device here.
-		print("🧠 New Model created...")
+		print("New Model created...")
 	else:
 		model = PPO.load(model_path, env=env)
-		print("🧠 Model loaded...")
+		print(" Model loaded...")
 
 
 	'''Training loop'''
 	while True:
 		model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="PPO", log_interval=1)
 		model.save(f"{models_dir}/PPO-1")
-		print(f"🧠 Model updated...")
+		print(f"Model updated...")
