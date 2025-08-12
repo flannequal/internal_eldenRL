@@ -52,7 +52,7 @@ arenas:
 ```mermaid
 flowchart LR
   A[SB3 PPO Agent] --> B[EldenMemoryEnv]
-  A -. legacy .-> L[EldenEnv (Vision)]
+  A -. legacy .-> L[EldenEnv - Vision]
 
   B --> C[InputController]
   C --> G[Game]
@@ -80,7 +80,7 @@ flowchart LR
 
   %% Legacy vision stack (optional)
   L --> C
-  L --> R[EldenReward (Vision)]
+  L --> R[EldenReward - Vision]
 ```
 
 ## Modes
