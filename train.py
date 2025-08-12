@@ -1,6 +1,5 @@
 from stable_baselines3 import PPO, A2C
 import os
-from EldenEnv import EldenEnv
 
 
 def train(CREATE_NEW_MODEL, config):
@@ -23,8 +22,14 @@ def train(CREATE_NEW_MODEL, config):
 	print("🧠 Folder structure created...")
 
 
-	'''Initializing environment'''
-	env = EldenEnv(config)
+    '''Initializing environment'''
+    env_mode = config.get("ENV_MODE", "VISION").upper()
+    if env_mode == "MEMORY":
+        from EldenMemoryEnv import EldenMemoryEnv  # Lazy import to avoid cv2/mss dependencies
+        env = EldenMemoryEnv(config)
+    else:
+        from EldenEnv import EldenEnv
+        env = EldenEnv(config)
 	print("🧠 EldenEnv initialized...")
 
 
