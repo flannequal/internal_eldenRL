@@ -7,7 +7,7 @@ from gym import spaces
 import pydirectinput
 import pytesseract                              # Pytesseract is not just a simple pip install.
 from EldenReward import EldenReward
-from walkToBoss import walkToBoss
+from MemoryClient import MemoryClient
 
 
 N_CHANNELS = 3                                  #Image format
@@ -85,11 +85,15 @@ class EldenEnv(gym.Env):
         self.DESIRED_FPS = config["DESIRED_FPS"]                                    #Desired FPS (not implemented yet)
         self.BOSS_HAS_SECOND_PHASE = config["BOSS_HAS_SECOND_PHASE"]                #If the boss has a second phase
         self.are_in_second_phase = False                                            #If we are in the second phase of the boss
-        if self.GAME_MODE == "PVE": self.walk_to_boss = walkToBoss(config["BOSS"])  #Class to walk to the boss
-        else : 
-            self.matchmaking = walkToBoss(99)                           #Matchmaking class for PVP mode
-            self.duel_lockon = walkToBoss(100)                          #Lock on class to the player in PVP mode
-            self.first_reset = True
+        self.BOSS = config.get("BOSS", 1)
+        self.RESET_MODE = config.get("RESET_MODE", "MEMORY").upper()
+        self.mem = None
+        if self.RESET_MODE == "MEMORY":
+            self.mem = MemoryClient(
+                process_name=config.get("PROCESS_NAME", "eldenring.exe"),
+                memory_config_path=config.get("MEMORY_CONFIG_PATH")
+            )
+        # VISION mode no longer uses WalkToBoss
     
 
     '''One hot encoding of the last 10 actions'''
@@ -261,83 +265,7 @@ class EldenEnv(gym.Env):
             print('🔄🔥')
         
     
-    '''Checking if we are in the boss second phase'''
-    def check_for_second_phase(self):
-        frame = self.grab_screen_shot()
-        self.reward, self.death, self.boss_death, self.duel_won = self.rewardGen.update(frame, self.first_step) #perform eldenreward update to get the current status of the boss
-
-        if not self.boss_death:                 #if the boss is not dead when we check for the second phase, we are in the second phase
-            self.are_in_second_phase = True
-        else:                                   #if the boss is dead we can simply warp back to the bonfire
-            self.are_in_second_phase = False
-
-
-    '''Waiting for the loading screen to end'''
-    def wait_for_loading_screen(self):
-        in_loading_screen = False           #If we are in a loading screen right now
-        have_been_in_loading_screen = False #If a loading screen was detected
-        t_check_frozen_start = time.time()  #Timer to check the length of the loading screen
-        t_since_seen_next = None            #We detect the loading screen by reading the text "next" in the bottom left corner of the loading screen.
-        while True: #We are forever taking a screenshot and checking if it is a loading screen.
-            frame = self.grab_screen_shot()
-            in_loading_screen = self.check_for_loading_screen(frame)
-            if in_loading_screen:
-                print("⌛ Loading Screen:", in_loading_screen) #Loading Screen: True
-                have_been_in_loading_screen = True
-                t_since_seen_next = time.time()
-            else:   #If we dont see "next" on the screen we are not in the loading screen [anymore]
-                if have_been_in_loading_screen:
-                    print('⌛ After loading screen...')
-                else:
-                    print('⌛ Waiting for loading screen...')
-                
-            if have_been_in_loading_screen and (time.time() - t_since_seen_next) > 2.5:             #We have been in a loading screen and left it for more than 2.5 seconds
-                print('⌛✔️ Left loading screen #1')
-                break
-            elif have_been_in_loading_screen and  ((time.time() - t_check_frozen_start) > 60):      #We have been in a loading screen for 60 seconds. We assume the game is frozen
-                print('⌛❌ Did not leave loading screen #2 (Frozen)')
-                #some sort of error handling here...
-                #break
-            elif not have_been_in_loading_screen and ((time.time() - t_check_frozen_start) > 20):   #We have not entered a loading screen for 25 seconds. (return to bonfire and walk to boss) #⚔️ in pvp we use this for waiting for matchmaking
-                if self.GAME_MODE == "PVE":
-                    if self.BOSS_HAS_SECOND_PHASE:
-                        self.check_for_second_phase()
-                        if self.are_in_second_phase:
-                            print('⌛👹 Second phase found #3')
-                            break
-                        else:
-                            print('⌛🔥 No loading screen found #3')
-                            self.take_action(99)                #warp back to bonfire
-                            t_check_frozen_start = time.time()  #reset the timer
-                    else:
-                        print('⌛🔥 No loading screen found #3')
-                        self.take_action(99)                #warp back to bonfire
-                        t_check_frozen_start = time.time()  #reset the timer
-                                                            #try again by not breaking the loop (waiting for loading screen then walk to boss)
-                else:
-                    print('⌛❌ No loading screen found #3')
-                    t_check_frozen_start = time.time()  #reset the timer
-                                                        #continue waiting for loading screen (matchmaking)
-        
-
-    '''Checking if we are in a loading screen'''
-    def check_for_loading_screen(self, frame):
-        #The way we determine if we are in a loading screen is by checking if the text "next" is in the bottom left corner of the screen. If it is we are in a loading screen. If it is not we are not in a loading screen.
-        next_text_image = frame[1015:1040, 155:205] #Cutting the frame to the location of the text "next" (bottom left corner)
-        next_text_image = cv2.resize(next_text_image, ((205-155)*3, (1040-1015)*3))
-        lower = np.array([0,0,75])                  #Removing color from the image
-        upper = np.array([255,255,255])
-        hsv = cv2.cvtColor(next_text_image, cv2.COLOR_RGB2HSV)
-        mask = cv2.inRange(hsv, lower, upper)
-        pytesseract_output = pytesseract.image_to_string(mask,  lang='eng',config='--psm 6 --oem 3') #reading text from the image cut out
-        in_loading_screen = "Next" in pytesseract_output or "next" in pytesseract_output             #Boolean if we see "next" in the text
-        
-        if self.DEBUG_MODE:
-            matches = np.argwhere(mask==255)
-            percent_match = len(matches) / (mask.shape[0] * mask.shape[1])
-            print(percent_match)
-
-        return in_loading_screen
+    
         
 
     '''Step function that is called by train.py'''
@@ -373,11 +301,9 @@ class EldenEnv(gym.Env):
         else:
             if (time.time() - self.t_start) > 600:  #If the agent has been in control for more than 10 minutes we give up
                 self.done = True
-                self.take_action(99)                #warp back to bonfire
                 print('🐾✔️ Step done (time limit)')
             elif self.boss_death:
                 self.done = True   
-                self.take_action(99)                #warp back to bonfire
                 print('🐾✔️ Step done (boss death)')    
         if self.duel_won:
             self.done = True
@@ -451,10 +377,9 @@ class EldenEnv(gym.Env):
     def reset(self):
         #📍 1. Clear any held down keys
         #📍 2. Print the average reward for the last run
-        #📍 3. Wait for loading screen                      #⚔️3-4 PvP: wait for loading screen - matchmaking - wait for loading screen - lock on
-        #📍 4. Walking back to the boss
-        #📍 5. Reset all variables
-        #📍 6. Create the first observation for the first step and return it
+        #📍 3. Reset to arena (memory-based)
+        #📍 4. Reset all variables
+        #📍 5. Create the first observation for the first step and return it
 
 
         print('🔄 Reset called...')
@@ -473,29 +398,11 @@ class EldenEnv(gym.Env):
             print('🔄🎁 Average reward for last run:', avg_r) 
 
 
-        '''📍 3. Checking for loading screen / waiting some time for sucessful reset'''
-        if self.GAME_MODE == "PVE": self.wait_for_loading_screen()
-        else:   #⚔️
-            #wait for loading screen (after the duel) - matchmaking - wait for loading screen (into the duel) - lock on
-            if not self.first_reset:            #handle the first reset differently (we want to start with the matchmaking, not with losing a duel)
-                self.wait_for_loading_screen() 
-                self.matchmaking.perform()
-            self.first_reset = False
-            self.wait_for_loading_screen()
-            self.duel_lockon.perform()
-            
-
-        '''📍 4. Walking to the boss'''         #⚔️we already did this in 📍 3. for PVP
-        if self.GAME_MODE == "PVE":
-            if self.BOSS_HAS_SECOND_PHASE:
-                if self.are_in_second_phase:
-                    print("🔄👹 already in arena")
-                else:
-                    print("🔄👹 walking to boss")
-                    self.walk_to_boss.perform()
-            else:                
-                print("🔄👹 walking to boss")
-                self.walk_to_boss.perform()          #This is hard coded in walkToBoss.py
+        '''📍 3. Memory-based reset'''
+        if self.RESET_MODE == "MEMORY" and self.mem is not None:
+            if not self.mem.attached:
+                self.mem.attach()
+            self.mem.reset_arena(self.BOSS, second_phase=False)
 
         if self.death:                           #Death counter in txt file
             f = open("deathCounter.txt", "r")
@@ -507,7 +414,7 @@ class EldenEnv(gym.Env):
             f.close()
 
 
-        '''📍 5. Reset all variables'''
+        '''📍 4. Reset all variables'''
         self.step_iteration = 0
         self.reward_history = [] 
         self.done = False
@@ -522,7 +429,7 @@ class EldenEnv(gym.Env):
         self.t_start = time.time()
 
 
-        '''📍 6. Return the first observation'''
+        '''📍 5. Return the first observation'''
         frame = self.grab_screen_shot()
         observation = cv2.resize(frame, (MODEL_WIDTH, MODEL_HEIGHT))    #Reset also returns the first observation for the agent
         spaces_dict = { 
