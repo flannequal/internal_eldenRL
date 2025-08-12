@@ -1,5 +1,5 @@
 import cv2
-import gymnasium
+import gymnasium as gym
 import mss
 import time
 import numpy as np
@@ -60,7 +60,7 @@ class EldenEnv(gym.Env):
             'prev_actions': spaces.Box(low=0, high=1, shape=(NUM_ACTION_HISTORY, NUMBER_DISCRETE_ACTIONS, 1), dtype=np.uint8),      #Last 10 actions as one hot encoded array
             'state': spaces.Box(low=0, high=1, shape=(2,), dtype=np.float32),                                                       #Stamina and helth of the player in percent
         }
-        self.observation_space = gym.spaces.Dict(spaces_dict)
+        self.observation_space = spaces.Dict(spaces_dict)
     
 
         '''Setting up the variables'''''
@@ -294,24 +294,17 @@ class EldenEnv(gym.Env):
             print('🎁 self.boss_death: ', self.boss_death)
 
 
-        '''📍 3. Checking if the game is done'''
-        if self.death:
-            self.done = True
-            print('🐾✔️ Step done (player death)') 
-        else:
-            if (time.time() - self.t_start) > 600:  #If the agent has been in control for more than 10 minutes we give up
-                self.done = True
-                print('🐾✔️ Step done (time limit)')
-            elif self.boss_death:
-                self.done = True   
-                print('🐾✔️ Step done (boss death)')    
-        if self.duel_won:
-            self.done = True
-            print('🐾✔️ Step done (duel won)')                                            
+        '''📍 3. Checking termination/truncation (Gymnasium API)'''
+        terminated = False
+        truncated = False
+        if self.death or self.boss_death or self.duel_won:
+            terminated = True
+        elif (time.time() - self.t_start) > 600:
+            truncated = True
             
 
         '''📍 4. Taking the action'''
-        if not self.done:
+        if not (terminated or truncated):
             self.take_action(action)
         
 
@@ -352,7 +345,7 @@ class EldenEnv(gym.Env):
 
 
         '''Console output of the step'''
-        if not self.done: #Losts of python string formatting to make the console output look nice
+        if not (terminated or truncated): #Losts of python string formatting to make the console output look nice
             self.reward = round(self.reward, 0)
             reward_with_spaces = str(self.reward)
             for i in range(5 - len(reward_with_spaces)):
@@ -369,8 +362,8 @@ class EldenEnv(gym.Env):
             print('👣✔️ Reward: ' + str(self.reward) + '| Max Reward: ' + str(self.max_reward))
 
 
-        #📍 6. Returning the observation, the reward, if we are done, and the info
-        return spaces_dict, self.reward, self.done, info
+        #📍 6. Returning the observation, the reward, termination, truncation, and the info (Gymnasium API)
+        return spaces_dict, self.reward, terminated, truncated, info
     
 
     '''Reset function that is called if the game is done'''
@@ -429,7 +422,7 @@ class EldenEnv(gym.Env):
         self.t_start = time.time()
 
 
-        '''📍 5. Return the first observation'''
+        '''📍 5. Return the first observation (Gymnasium API)'''
         frame = self.grab_screen_shot()
         observation = cv2.resize(frame, (MODEL_WIDTH, MODEL_HEIGHT))    #Reset also returns the first observation for the agent
         spaces_dict = { 
@@ -439,7 +432,7 @@ class EldenEnv(gym.Env):
         }
         
         print('🔄✔️ Reset done.')
-        return spaces_dict                                              #return the new observation
+        return spaces_dict, {}                                          #return the new observation
 
 
     '''No render function implemented (just look at the game)'''
