@@ -1,0 +1,75 @@
+---
+alwaysApply: false
+description: "Memory-based arenas refactor roadmap and progress status: what exists now and what's left; update after each major change"
+---
+
+# Memory Refactor Roadmap and Progress
+
+This rule tracks the ongoing architectural refactor from vision-only to memory-based arenas, including a hybrid VISION mode that uses instant, memory-based resets. Update this file at the end of each feature sprint or major change.
+
+## What exists now (scaffolding in place)
+- Memory-mode environment: [EldenMemoryEnv.py](mdc:EldenMemoryEnv.py)
+  - Observations are numeric (hp, stamina, boss hp, time alive, phase)
+  - Resets use memory-based instant teleport/restore via [MemoryClient.py](mdc:MemoryClient.py)
+  - Shares input execution with vision via [InputController.py](mdc:InputController.py)
+- Reward for memory mode: [EldenRewardMemory.py](mdc:EldenRewardMemory.py)
+  - Reward logic uses precise values from memory reads
+- YAML-driven arena config (loaded by default):
+  - Sample config: [config/memory_arenas.sample.yaml](mdc:config/memory_arenas.sample.yaml)
+  - Load order (first found): `MEMORY_CONFIG_PATH` → `config/memory_arenas.yaml` → sample
+  - Defaults wired in [main.py](mdc:main.py); also used by [EldenMemoryEnv.py](mdc:EldenMemoryEnv.py) → [MemoryClient.py](mdc:MemoryClient.py)
+- Hybrid VISION mode resets (instant): [EldenEnv.py](mdc:EldenEnv.py)
+  - Uses memory-based arena reset; retains vision observations/reward
+- Shared input system: [InputController.py](mdc:InputController.py)
+- Training unchanged: [train.py](mdc:train.py)
+- Updated documentation: [README.md](mdc:README.md)
+
+Notes:
+- `walkToBoss.py` is not used anymore by default. Keep or delete depending on legacy needs.
+
+## What’s left (high-level backlogs)
+1) Memory backend (core)
+   - Implement real process attach/handle management
+   - Implement reliable read/write for player hp/stamina, boss hp, player pos, boss state/flags
+   - Error handling, safety checks, and offline/single-player guarantees
+2) Signature scanning & offsets
+   - Add a SignatureScanner to find addresses across game versions
+   - Maintain an OffsetDB for known versions; fallback to signature scan
+3) Arena coverage
+   - Fill YAML per-boss: spawn coords, camera, second phase triggers, flags
+   - Implement boss reset semantics (fog gates, AI state neutralization)
+   - Validate boundaries and soft-lock prevention
+4) Observation space extensions (optional)
+   - Add exact positions/velocities/orientations if needed by policies
+5) Performance & stability
+   - Optimize read frequency and caching
+   - Optional threading for memory polling
+6) Testing & validation
+   - Add unit tests for MemoryClient read/write adapters
+   - Add integration tests for reset sequences
+   - Version compatibility checks and graceful degradation
+7) Tooling & DX
+   - CLI utilities to dump/verify addresses
+   - Logging/telemetry of memory ops for debugging
+
+## Near-term milestones
+- M1: Real memory read/write for hp, stamina, boss hp, and player position
+  - DoD: Deterministic hp/stamina reads; reliable teleport; boss hp reset
+- M2: First arena end-to-end (e.g., Malenia)
+  - DoD: From reset() → spawn in arena → fight steps → death/boss kill → reset() works repeatedly
+- M3: Safety/compat
+  - DoD: Check offline mode; add basic anti-cheat-safe toggles; basic version gating
+- M4: Signature scanning prototype
+  - DoD: Resolve at least player hp address via signature; store in OffsetDB
+
+## Config defaults
+- `ENV_MODE`: VISION or MEMORY
+- `RESET_MODE`: MEMORY (default for VISION env to use instant resets)
+- `PROCESS_NAME`: defaults to `eldenring.exe`
+- YAML load order: `MEMORY_CONFIG_PATH` → `config/memory_arenas.yaml` → `config/memory_arenas.sample.yaml`
+
+## Update cadence
+- After each feature sprint/major change, update:
+  - “What exists now” with new modules/behaviors
+  - Backlogs and milestones (mark delivered/adjust next steps)
+
