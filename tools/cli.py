@@ -6,8 +6,8 @@ from typing import Any, Dict
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from MemoryClient import MemoryClient  # noqa: E402
-from EldenHybridEnv import EldenHybridEnv # noqa: E402
+from MemoryClient import MemoryClient
+from EldenHybridEnv import EldenHybridEnv 
 
 
 def cmd_validate(root_dir: str) -> int:
@@ -94,7 +94,8 @@ def cmd_sim_loop(iterations: int, boss: int, fps: float) -> int:
         "DESIRED_FPS": fps,
         "PROCESS_NAME": "eldenring.exe",
         "SIMULATE_MEMORY": True,
-        "MEMORY_CONFIG_PATH": os.path.join("config", "memory_arenas.sample.yaml"),
+        # Disable inputs so the sim loop does not press real keys
+        "DISABLE_INPUT": True,
     }
     env = EldenHybridEnv(config)
     obs, info = env.reset()
@@ -107,7 +108,7 @@ def cmd_sim_loop(iterations: int, boss: int, fps: float) -> int:
             obs, info = env.reset()
         time.sleep(0.0)
     env.close()
-    print(f"✅ Simulated {iterations} steps. Total reward: {round(total_r, 2)}")
+    print(f"Simulated {iterations} steps. Total reward: {round(total_r, 2)}")
     return 0
 
 

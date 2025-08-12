@@ -1,11 +1,12 @@
 # Refactor eldenRL to a hybrid approach
+
 _Exported on 8/13/2025 at 01:50:12 GMT+12 from Cursor (1.4.3)_
 
 ---
 
 **User**
 
-@refactoring-process-list.mdc right now this project aims to re-factor the @web  eldenRL elden ring project by replacing its learning process completely from computer vision only - to the Soulsgym approach which uses memory addresses to provide context about impportant information like player health, boss health, stamina status, weapon damage etc - to the player. Though in my initial writeup  of this plan I naively said that we should compltely remove the computer vision pipeline when we use memory addresses; where in fact the best approach for this reinforcement learning task is to provide the agent with a mix of two - the environment obstacles state as a real view / screenshot of the screen (already what eldenrl did), and then games internal logic via memory to avoid having to parse annoying details like health bars and status of the UI meticulously. I need you to help me take an overview of the current split by looking at the current roadmap / state of the project, and help me transform it into a soulsgym approach which is a hyrbid of these information streams for the agent  to see a more completel current state of the environment. Right now what pipeline for memory address access exists - are split and arent involved in the computer vision, however we need to merge it in which invoeld a COMPLETE refactor / reconsideration of the design process of this project (which is fine due to being early on). Thus rewards can be calculated via in gaame memory-accessed states like the damage the agent did to boss (by calculating difference at timesteps), current helaaths, magic (fp) staatus, current weapon, debuffs, etc, but the agent cacn see the environment to be able to dodge attacks, and maneuvour around the arena theyre fighting in  Can you go through the codebase, make an updated merg/refactor plan, and then I'll approach before we continue with performing it  
+@refactoring-process-list.mdc right now this project aims to re-factor the @web eldenRL elden ring project by replacing its learning process completely from computer vision only - to the Soulsgym approach which uses memory addresses to provide context about impportant information like player health, boss health, stamina status, weapon damage etc - to the player. Though in my initial writeup of this plan I naively said that we should compltely remove the computer vision pipeline when we use memory addresses; where in fact the best approach for this reinforcement learning task is to provide the agent with a mix of two - the environment obstacles state as a real view / screenshot of the screen (already what eldenrl did), and then games internal logic via memory to avoid having to parse annoying details like health bars and status of the UI meticulously. I need you to help me take an overview of the current split by looking at the current roadmap / state of the project, and help me transform it into a soulsgym approach which is a hyrbid of these information streams for the agent to see a more completel current state of the environment. Right now what pipeline for memory address access exists - are split and arent involved in the computer vision, however we need to merge it in which invoeld a COMPLETE refactor / reconsideration of the design process of this project (which is fine due to being early on). Thus rewards can be calculated via in gaame memory-accessed states like the damage the agent did to boss (by calculating difference at timesteps), current helaaths, magic (fp) staatus, current weapon, debuffs, etc, but the agent cacn see the environment to be able to dodge attacks, and maneuvour around the arena theyre fighting in Can you go through the codebase, make an updated merg/refactor plan, and then I'll approach before we continue with performing it
 
 ---
 
@@ -16,6 +17,7 @@ Scanning the key files to understand the current split between the computer-visi
 Just reviewed the current envs, rewards, and memory scaffolding. You already have a clean split: vision env for images and a memory-only env with instant memory resets. What’s missing is a true hybrid env that uses memory for status/reward and vision for spatial context.
 
 ### What exists today (high-level)
+
 - EldenEnv (vision): screenshot-based observation and CV reward; now uses memory for instant resets only.
 - EldenMemoryEnv (memory): numeric observation (hp, stamina, boss hp, time alive, phase) + EldenRewardMemory; instant resets.
 - Shared input system: `InputController` across both envs.
@@ -24,6 +26,7 @@ Just reviewed the current envs, rewards, and memory scaffolding. You already hav
 - SoulsGym interface stub included at `examples/eldenring.py` (not wired yet).
 
 ### Gaps vs hybrid goal
+
 - No env that emits both image and a precise memory state vector.
 - Vision reward still depends on CV; hybrid should use memory deltas.
 - Memory backend is stubbed; no adapter for SoulsGym yet.
@@ -32,6 +35,7 @@ Just reviewed the current envs, rewards, and memory scaffolding. You already hav
 ### Proposed hybrid refactor (minimal-disruption, phased)
 
 - Phase A: Add a new `EldenHybridEnv` (keep legacy envs intact)
+
   - Observation space:
     - `img`: same as `EldenEnv` (cropped + resized screen)
     - `prev_actions`: unchanged one-hot history
@@ -47,15 +51,18 @@ Just reviewed the current envs, rewards, and memory scaffolding. You already hav
     - Single-step loop: grab screenshot, read memory, compute reward, act, return obs. FPS cap remains.
 
 - Phase B: Wire HYBRID mode to trainer/config
+
   - Add `ENV_MODE = "HYBRID"` in `main.py`, update `train.py` to import `EldenHybridEnv`.
   - Keep `VISION` and `MEMORY` modes operational for A/B and debugging.
 
 - Phase C: Unify reward path
+
   - Mark `EldenReward` (CV) as legacy. For `VISION` mode, you can either:
     - Keep using `EldenReward` (no change), or
     - Switch to `EldenRewardMemory` if `MemoryClient` is available (optional improvement).
 
 - Phase D: Memory backend pluggable interface
+
   - Refactor `MemoryClient` into a small adapter layer:
     - `MemoryBackend` protocol: `read_player_hp/stamina/boss_hp/position`, `write_position`, `set_player_full_*`, `reset_arena`.
     - Backends:
@@ -65,10 +72,12 @@ Just reviewed the current envs, rewards, and memory scaffolding. You already hav
   - `MemoryClient` delegates to the chosen backend based on config.
 
 - Phase E: Optional observation extensions
+
   - Add precise features behind flags, e.g. `player_pose`, `boss_hp_raw`, `in_combat`, `phase`, `fp`, `debuffs` (as memory reads become available).
   - Maintain stable observation shape by appending, not removing.
 
 - Phase F: SoulsGym integration path
+
   - Implement `SoulsGymBackend` that wraps `examples/eldenring.EldenRing`:
     - Map `player_hp`, `player_sp`, `player_max_hp/sp`, `player_pose`, etc.
     - Use SoulsGym’s write APIs for reset/teleport; keep gravity/death guards as in their interface.
@@ -84,6 +93,7 @@ Just reviewed the current envs, rewards, and memory scaffolding. You already hav
     - `SIMULATE_MEMORY: True/False`
 
 ### File-level edits (concise)
+
 - New:
   - `EldenHybridEnv.py`: Combine `EldenEnv` image capture with `EldenMemoryEnv` state/reward/termination.
 - Modify:
@@ -96,12 +106,14 @@ Just reviewed the current envs, rewards, and memory scaffolding. You already hav
   - `config/memory_arenas.sample.yaml`: annotate fields used by hybrid reward (hp/stamina/boss_hp addresses).
 
 ### Hybrid observation spec
+
 - `img`: `(MODEL_HEIGHT, MODEL_WIDTH, 3)` uint8
 - `prev_actions`: `(10, NUMBER_DISCRETE_ACTIONS, 1)` uint8
 - `state`: `(5,)` float32: `[hp, stamina, boss_hp, time_alive_s, arena_phase]`
 - Backward-compatible with SB3 `MultiInputPolicy`.
 
 ### Step semantics (hybrid)
+
 - Read memory: hp/stamina/boss_hp/time/phase
 - Compute reward via `EldenRewardMemory.update(...)`
 - Check termination (death/boss_death/time)
@@ -110,6 +122,7 @@ Just reviewed the current envs, rewards, and memory scaffolding. You already hav
 - Return obs dict + reward + done flags
 
 ### Milestones and DoD
+
 - M1: `EldenHybridEnv` and HYBRID mode in trainer
   - DoD: Trains end-to-end with `SIMULATE_MEMORY=True`, returns image+state, reward from memory
 - M2: Backend pluggable `MemoryClient`
@@ -120,6 +133,7 @@ Just reviewed the current envs, rewards, and memory scaffolding. You already hav
   - DoD: Optional state vector extensions; docs updated
 
 ### Risks and safeguards
+
 - Version drift for addresses: mitigated by SoulsGym and YAML versioning.
 - Anti-cheat: offline only; document safety toggles.
 - Sync jitter: keep reads and screenshot within same step; consider minor sleep to stabilize if needed.
@@ -134,7 +148,7 @@ If you’re good with this, I’ll implement Phase A (new `EldenHybridEnv`, conf
 
 **User**
 
-We should only focus on having one project pipeline for training / rewarding / playing in an environment - and that is using a mix of information from vision and memory-accessed information straight for the game. If you want to see a bit of how soulsgym worked with the elden ring memory offsets in particular, I put some of their repos code from @SoulsGym inside of@examples/ directory I have added the soulsgym docs too- but note most of it is with other souls games apart from elden ring which we dont want to use / focus on because this project is specifically about elden ring bosses. I have also added the original readme from eldenrl @EldenRL  github repo as some context, as this project is directly forked from it.
+We should only focus on having one project pipeline for training / rewarding / playing in an environment - and that is using a mix of information from vision and memory-accessed information straight for the game. If you want to see a bit of how soulsgym worked with the elden ring memory offsets in particular, I put some of their repos code from @SoulsGym inside of@examples/ directory I have added the soulsgym docs too- but note most of it is with other souls games apart from elden ring which we dont want to use / focus on because this project is specifically about elden ring bosses. I have also added the original readme from eldenrl @EldenRL github repo as some context, as this project is directly forked from it.
 
 ---
 
@@ -143,6 +157,7 @@ We should only focus on having one project pipeline for training / rewarding / p
 Quick pass done over `EldenEnv.py`, `EldenMemoryEnv.py`, `EldenReward.py`, `EldenRewardMemory.py`, `MemoryClient.py`, `InputController.py`, `train.py`, `main.py`, `config/memory_arenas.sample.yaml`, and `examples/eldenring.py` (SoulsGym ER interface). I’m proposing a single, unified HYBRID pipeline: one environment that returns an image for spatial context plus precise memory state for rewards/termination and internal logic.
 
 ### Target architecture (one pipeline only)
+
 - One gym env: `EldenHybridEnv`
   - Observations: vision + memory
     - `img`: cropped/resized screenshot (same as `EldenEnv`)
@@ -157,6 +172,7 @@ Quick pass done over `EldenEnv.py`, `EldenMemoryEnv.py`, `EldenReward.py`, `Elde
 - Trainer/config: always use this single env; legacy envs marked deprecated but not removed yet
 
 ### Observation and reward spec
+
 - Base observation (stable):
   - `img`: `(MODEL_HEIGHT, MODEL_WIDTH, 3)` uint8
   - `prev_actions`: `(10, NUMBER_DISCRETE_ACTIONS, 1)` uint8
@@ -168,6 +184,7 @@ Quick pass done over `EldenEnv.py`, `EldenMemoryEnv.py`, `EldenReward.py`, `Elde
 - Rewards: kept from `EldenRewardMemory` (exact deltas, no CV noise). Extend later when more memory features exist.
 
 ### Minimal shape of the env (for clarity)
+
 ```python
 class EldenHybridEnv(gym.Env):
     action_space = spaces.Discrete(NUMBER_DISCRETE_ACTIONS)
@@ -194,6 +211,7 @@ class EldenHybridEnv(gym.Env):
 ```
 
 ### File-level changes
+
 - New:
   - `EldenHybridEnv.py` (env combining `EldenEnv` vision capture and `EldenMemoryEnv` state/reward/termination)
   - `vision/capture.py` (tiny helper for `mss` crop/resize used by `EldenHybridEnv`)
@@ -210,6 +228,7 @@ class EldenHybridEnv(gym.Env):
   - Mark `EldenEnv.py`/`EldenMemoryEnv.py` as deprecated in docstrings; keep for reference during transition
 
 ### Config (single pipeline)
+
 - `MEMORY_BACKEND`: `"STUB"` | `"SOULSGYM"`
 - `MEMORY_CONFIG_PATH`: YAML for arenas (used by STUB or future CE backend)
 - `SIMULATE_MEMORY`: True/False (dev)
@@ -217,6 +236,7 @@ class EldenHybridEnv(gym.Env):
 - Keep existing: `PROCESS_NAME`, `DESIRED_FPS`, `BOSS`, `BOSS_HAS_SECOND_PHASE`, `DEBUG_MODE`, `PYTESSERACT_PATH` (only needed to enable image capture)
 
 ### Phased implementation and DoD
+
 - P1: Hybrid env + single-pipeline trainer
   - DoD: `train.py` uses `EldenHybridEnv`; training runs end-to-end with `SIMULATE_MEMORY=True`, reward/termination from memory; image present
 - P2: Backend abstraction
@@ -229,6 +249,7 @@ class EldenHybridEnv(gym.Env):
   - DoD: new terms based on memory signals; ablation toggles
 
 ### Risks and constraints
+
 - SoulsGym warns about stability and ban risk; enforce offline-only and new save in docs.
 - Version mismatch of ER offsets: mitigated by SoulsGym backend; keep YAML for alternative backend path.
 - Sync: gather memory and image within a single step; maintain current FPS limiter.
@@ -269,13 +290,14 @@ class EldenHybridEnv(gym.Env):
 
 **User**
 
-Yes I approve, but I would rather not have temporary tests / stubs - rather just attempt on real memory, and only have a test for whether our reward calculations work in some way using the existing cli tool for sim_loop - thats it though. Because otherwise our framework becomes too bloated to work with i.e not just focusing on the goal of getting this to work, im a solo developer too so this isnt designed to work / scale with a team. there is the memory addresses and use of the example from @eldenring.py  and @addresses.yaml. After considering this - continue ahead, but also provide some written acknowledgement and what exactly your implemmentation will need to start working - specifically memory address information. Also consider /metnion how the implemmentation will need to be updated to support more environmment states / memory informmation from the game in the future 
+Yes I approve, but I would rather not have temporary tests / stubs - rather just attempt on real memory, and only have a test for whether our reward calculations work in some way using the existing cli tool for sim_loop - thats it though. Because otherwise our framework becomes too bloated to work with i.e not just focusing on the goal of getting this to work, im a solo developer too so this isnt designed to work / scale with a team. there is the memory addresses and use of the example from @eldenring.py and @addresses.yaml. After considering this - continue ahead, but also provide some written acknowledgement and what exactly your implemmentation will need to start working - specifically memory address information. Also consider /metnion how the implemmentation will need to be updated to support more environmment states / memory informmation from the game in the future
 
 ---
 
 **Cursor**
 
 Implementing the unified HYBRID environment and wiring it into the trainer. I’ll:
+
 - Add `EldenHybridEnv.py` that combines vision capture with memory-based state and rewards.
 - Update `MemoryClient.py` to use the SoulsGym `examples/eldenring.py` backend for real memory reads/writes and document boss HP needs.
 - Update `train.py` to always instantiate the hybrid env.
@@ -728,13 +750,13 @@ def train(CREATE_NEW_MODEL, config):
 
 
 	'''Creating folder structure'''
-	model_name = "PPO-1" 					
+	model_name = "PPO-1"
 	if not os.path.exists(f"models/{model_name}/"):
 		os.makedirs(f"models/{model_name}/")
 	if not os.path.exists(f"logs/{model_name}/"):
 		os.makedirs(f"logs/{model_name}/")
 	models_dir = f"models/{model_name}/"
-	logdir = f"logs/{model_name}/"			
+	logdir = f"logs/{model_name}/"
 	model_path = f"{models_dir}/PPO-1"
 	print("🧠 Folder structure created...")
 
@@ -804,366 +826,366 @@ if __name__ == '__main__':
 
 ```markdown
 <<'PATCH'
-*** Begin Patch
-*** Update File: README.md
+**_ Begin Patch
+_** Update File: README.md
 @@
 -# EldenRL (Hybrid) – Memory-based arenas with optional vision
 +# EldenRL (Hybrid) – Single pipeline using vision + memory
 @@
 -EldenRL now supports instant, memory-based resets for boss arenas while keeping the original vision-based observation loop available. You can train either:
--
--- MEMORY mode: No screen capture. Observations come from game memory (hp, stamina, boss hp, etc.).
--- VISION mode (legacy): Uses screenshots for observations, but resets are now instant and memory-based.
-+This project now uses a single environment that combines a real game image (for spatial context) with precise state read from game memory (hp, stamina, boss hp, etc.).
-@@
--## Quick start
-+## Quick start
-@@
--2. Choose mode in `main.py` via `ENV_MODE`: `"MEMORY"` or `"VISION"`
--3. For MEMORY mode:
--   - Copy `config/memory_arenas.sample.yaml` to `config/memory_arenas.yaml`
--   - Fill in addresses/coords for your target boss
--   - Set `MEMORY_CONFIG_PATH` in `main.py`
--4. Run `python main.py`
-+2. Configure `main.py` (Hybrid is default)
-+3. Ensure SoulsGym is installed and Elden Ring is running (offline) on a fixed game version
-+4. Run `python main.py`
-@@
--## Architecture
-+## Architecture
-@@
--  A[SB3 PPO Agent] --> B[EldenMemoryEnv]
--  A -. legacy .-> L[EldenEnv - Vision]
-+  A[SB3 PPO Agent] --> H[EldenHybridEnv]
-@@
--  B --> C[InputController]
-+  H --> C[InputController]
-   C --> G[Game]
- 
--  B --> D[MemoryClient]
-+  H --> D[MemoryClient]
-   D <--> M[(Game Memory)]
- 
--  B --> E[EldenRewardMemory]
-+  H --> E[EldenRewardMemory]
-@@
--  D --> F[(ArenaDB YAML)]
-+  D --> F[(ArenaDB YAML)]
-@@
--  L --> C
--  L --> R[EldenReward - Vision]
-+  %% Legacy envs kept for reference only
-+  L[EldenEnv - Vision] -.deprecated .-> C
-+  L -.deprecated .-> R[EldenReward - Vision]
-@@
--## Modes
--
--- MEMORY mode:
--  - Env: `EldenMemoryEnv`
--  - Observation: numeric state vector (hp, stamina, boss hp, time alive, phase)
--  - Reset: instant via `MemoryClient.reset_arena`
--- VISION mode (legacy):
--  - Env: `EldenEnv`
--  - Observation: image + hp/stamina from vision
--  - Reset: instant via `MemoryClient.reset_arena` (hybrid). No `walkToBoss.py` usage.
-+## Observation and rewards
-+
-+- Observation (default):
-+  - `img`: `(MODEL_HEIGHT, MODEL_WIDTH, 3)` uint8
-+  - `prev_actions`: `(10, NUMBER_DISCRETE_ACTIONS, 1)` uint8
-+  - `state`: `(5,)` float32 = `[hp, stamina, boss_hp, time_alive_s, arena_phase]`
-+
-+- Reward/termination: computed purely from memory values via `EldenRewardMemory`.
-@@
--## Notes on safety and scope
-+## Requirements for real memory backend
-+
-+- SoulsGym installed and importable
-+- Elden Ring process available and running offline
-+- Addresses file for Elden Ring present (see `examples/data/eldenring/addresses.yaml`)
-+- New game save recommended (stability/safety)
-+
-+If SoulsGym isn't available, set `SIMULATE_MEMORY=True` for local dry-runs (no learning value).
-+
-+## Notes on safety and scope
-@@
--## Contributing
-+## Extending state and future work
-+
-+- Add more memory features: exact `player_pose`, `lock_on`, `in_combat`, FP/MP, debuffs, weapon data
-+- When boss entity offsets are known, implement boss HP read/write and better arena resets
-+- Optional signature scanning and version gating for robustness
-+
-+## Contributing
-@@
--This project builds on the original EldenRL and community work. The vision pipeline remains available as a legacy option, while new development focuses on memory-based arenas.
-+This project builds on the original EldenRL and SoulsGym work. The legacy vision-only env remains for reference, but all training should use the hybrid environment.
-*** End Patch
-PATCH
+
+- -- MEMORY mode: No screen capture. Observations come from game memory (hp, stamina, boss hp, etc.).
+  -- VISION mode (legacy): Uses screenshots for observations, but resets are now instant and memory-based.
+  +This project now uses a single environment that combines a real game image (for spatial context) with precise state read from game memory (hp, stamina, boss hp, etc.).
+  @@
+  -## Quick start
+  +## Quick start
+  @@
+  -2. Choose mode in `main.py` via `ENV_MODE`: `"MEMORY"` or `"VISION"`
+  -3. For MEMORY mode:
+- - Copy `config/memory_arenas.sample.yaml` to `config/memory_arenas.yaml`
+- - Fill in addresses/coords for your target boss
+- - Set `MEMORY_CONFIG_PATH` in `main.py`
+    -4. Run `python main.py`
+    +2. Configure `main.py` (Hybrid is default)
+    +3. Ensure SoulsGym is installed and Elden Ring is running (offline) on a fixed game version
+    +4. Run `python main.py`
+    @@
+    -## Architecture
+    +## Architecture
+    @@
+- A[SB3 PPO Agent] --> B[EldenMemoryEnv]
+- A -. legacy .-> L[EldenEnv - Vision]
+
+* A[SB3 PPO Agent] --> H[EldenHybridEnv]
+  @@
+
+- B --> C[InputController]
+
+* H --> C[InputController]
+  C --> G[Game]
+
+- B --> D[MemoryClient]
+
+* H --> D[MemoryClient]
+  D <--> M[(Game Memory)]
+
+- B --> E[EldenRewardMemory]
+
+* H --> E[EldenRewardMemory]
+  @@
+
+- D --> F[(ArenaDB YAML)]
+
+* D --> F[(ArenaDB YAML)]
+  @@
+
+- L --> C
+- L --> R[EldenReward - Vision]
+
+* %% Legacy envs kept for reference only
+* L[EldenEnv - Vision] -.deprecated .-> C
+* L -.deprecated .-> R[EldenReward - Vision]
+  @@
+  -## Modes
+
+- -- MEMORY mode:
+- - Env: `EldenMemoryEnv`
+- - Observation: numeric state vector (hp, stamina, boss hp, time alive, phase)
+- - Reset: instant via `MemoryClient.reset_arena`
+    -- VISION mode (legacy):
+- - Env: `EldenEnv`
+- - Observation: image + hp/stamina from vision
+- - Reset: instant via `MemoryClient.reset_arena` (hybrid). No `walkToBoss.py` usage.
+    +## Observation and rewards
+
+* +- Observation (default):
+* - `img`: `(MODEL_HEIGHT, MODEL_WIDTH, 3)` uint8
+* - `prev_actions`: `(10, NUMBER_DISCRETE_ACTIONS, 1)` uint8
+* - `state`: `(5,)` float32 = `[hp, stamina, boss_hp, time_alive_s, arena_phase]`
+* +- Reward/termination: computed purely from memory values via `EldenRewardMemory`.
+  @@
+  -## Notes on safety and scope
+  +## Requirements for real memory backend
+* +- SoulsGym installed and importable
+  +- Elden Ring process available and running offline
+  +- Addresses file for Elden Ring present (see `examples/data/eldenring/addresses.yaml`)
+  +- New game save recommended (stability/safety)
+* +If SoulsGym isn't available, set `SIMULATE_MEMORY=True` for local dry-runs (no learning value).
+* +## Notes on safety and scope
+  @@
+  -## Contributing
+  +## Extending state and future work
+* +- Add more memory features: exact `player_pose`, `lock_on`, `in_combat`, FP/MP, debuffs, weapon data
+  +- When boss entity offsets are known, implement boss HP read/write and better arena resets
+  +- Optional signature scanning and version gating for robustness
+* +## Contributing
+  @@
+  -This project builds on the original EldenRL and community work. The vision pipeline remains available as a legacy option, while new development focuses on memory-based arenas.
+  +This project builds on the original EldenRL and SoulsGym work. The legacy vision-only env remains for reference, but all training should use the hybrid environment.
+  \*\*\* End Patch
+  PATCH
 ```
 
 ```markdown
 <<'PATCH'
-*** Begin Patch
-*** Update File: README.md
+**_ Begin Patch
+_** Update File: README.md
 @@
 -# EldenRL (Hybrid) – Memory-based arenas with optional vision
 +# EldenRL (Hybrid) – Single pipeline using vision + memory
 @@
 -EldenRL now supports instant, memory-based resets for boss arenas while keeping the original vision-based observation loop available. You can train either:
--
--- MEMORY mode: No screen capture. Observations come from game memory (hp, stamina, boss hp, etc.).
--- VISION mode (legacy): Uses screenshots for observations, but resets are now instant and memory-based.
-+This project now uses a single environment that combines a real game image (for spatial context) with precise state read from game memory (hp, stamina, boss hp, etc.).
-@@
--## Requirements
-+## Requirements
-@@
--- MEMORY mode: PyYAML (and your chosen memory read/write backend when you implement it)
--- VISION mode: OpenCV, `mss`, Tesseract OCR
-+- OpenCV, `mss`, Tesseract OCR (for image capture)
-+- SoulsGym (for real Elden Ring memory access)
-@@
--## Quick start
-+## Quick start
-@@
--2. Choose mode in `main.py` via `ENV_MODE`: `"MEMORY"` or `"VISION"`
--3. For MEMORY mode:
--   - Copy `config/memory_arenas.sample.yaml` to `config/memory_arenas.yaml`
--   - Fill in addresses/coords for your target boss
--   - Set `MEMORY_CONFIG_PATH` in `main.py`
--4. Run `python main.py`
-+2. Configure `main.py` (Hybrid is default)
-+3. Ensure SoulsGym is installed and Elden Ring is running (offline) on a fixed game version
-+4. Run `python main.py`
-@@
--## Architecture
-+## Architecture
-@@
--  A[SB3 PPO Agent] --> B[EldenMemoryEnv]
--  A -. legacy .-> L[EldenEnv - Vision]
-+  A[SB3 PPO Agent] --> H[EldenHybridEnv]
-@@
--  B --> C[InputController]
-+  H --> C[InputController]
-   C --> G[Game]
- 
--  B --> D[MemoryClient]
-+  H --> D[MemoryClient]
-   D <--> M[(Game Memory)]
- 
--  B --> E[EldenRewardMemory]
-+  H --> E[EldenRewardMemory]
-@@
--  %% Data/config side
--  D --> F[(ArenaDB YAML)]
-+  %% Data/config side
-+  D --> F[(ArenaDB YAML)]
-@@
--  %% Legacy vision stack (optional)
--  L --> C
--  L --> R[EldenReward - Vision]
-+  %% Legacy envs kept for reference only
-+  L[EldenEnv - Vision] -.deprecated .-> C
-+  L -.deprecated .-> R[EldenReward - Vision]
-@@
--## Modes
--
--- MEMORY mode:
--  - Env: `EldenMemoryEnv`
--  - Observation: numeric state vector (hp, stamina, boss hp, time alive, phase)
--  - Reset: instant via `MemoryClient.reset_arena`
--- VISION mode (legacy):
--  - Env: `EldenEnv`
--  - Observation: image + hp/stamina from vision
--  - Reset: instant via `MemoryClient.reset_arena` (hybrid). No `walkToBoss.py` usage.
-+## Observation and rewards
-+
-+- Observation (default):
-+  - `img`: `(MODEL_HEIGHT, MODEL_WIDTH, 3)` uint8
-+  - `prev_actions`: `(10, NUMBER_DISCRETE_ACTIONS, 1)` uint8
-+  - `state`: `(5,)` float32 = `[hp, stamina, boss_hp, time_alive_s, arena_phase]`
-+
-+- Reward/termination: computed purely from memory values via `EldenRewardMemory`.
-@@
--## Notes on safety and scope
-+## Requirements for real memory backend
-+
-+- SoulsGym installed and importable
-+- Elden Ring process available and running offline
-+- Addresses file for Elden Ring present (see `examples/data/eldenring/addresses.yaml`)
-+- New game save recommended (stability/safety)
-+
-+If SoulsGym isn't available, set `SIMULATE_MEMORY=True` for local dry-runs (no learning value).
-+
-+## Notes on safety and scope
-@@
--## Contributing
-+## Extending state and future work
-+
-+- Add more memory features: exact `player_pose`, `lock_on`, `in_combat`, FP/MP, debuffs, weapon data
-+- When boss entity offsets are known, implement boss HP read/write and better arena resets
-+- Optional signature scanning and version gating for robustness
-+
-+## Contributing
-@@
--This project builds on the original EldenRL and community work. The vision pipeline remains available as a legacy option, while new development focuses on memory-based arenas.
-+This project builds on the original EldenRL and SoulsGym work. The legacy vision-only env remains for reference, but all training should use the hybrid environment.
-*** End Patch
-PATCH
+
+- -- MEMORY mode: No screen capture. Observations come from game memory (hp, stamina, boss hp, etc.).
+  -- VISION mode (legacy): Uses screenshots for observations, but resets are now instant and memory-based.
+  +This project now uses a single environment that combines a real game image (for spatial context) with precise state read from game memory (hp, stamina, boss hp, etc.).
+  @@
+  -## Requirements
+  +## Requirements
+  @@
+  -- MEMORY mode: PyYAML (and your chosen memory read/write backend when you implement it)
+  -- VISION mode: OpenCV, `mss`, Tesseract OCR
+  +- OpenCV, `mss`, Tesseract OCR (for image capture)
+  +- SoulsGym (for real Elden Ring memory access)
+  @@
+  -## Quick start
+  +## Quick start
+  @@
+  -2. Choose mode in `main.py` via `ENV_MODE`: `"MEMORY"` or `"VISION"`
+  -3. For MEMORY mode:
+- - Copy `config/memory_arenas.sample.yaml` to `config/memory_arenas.yaml`
+- - Fill in addresses/coords for your target boss
+- - Set `MEMORY_CONFIG_PATH` in `main.py`
+    -4. Run `python main.py`
+    +2. Configure `main.py` (Hybrid is default)
+    +3. Ensure SoulsGym is installed and Elden Ring is running (offline) on a fixed game version
+    +4. Run `python main.py`
+    @@
+    -## Architecture
+    +## Architecture
+    @@
+- A[SB3 PPO Agent] --> B[EldenMemoryEnv]
+- A -. legacy .-> L[EldenEnv - Vision]
+
+* A[SB3 PPO Agent] --> H[EldenHybridEnv]
+  @@
+
+- B --> C[InputController]
+
+* H --> C[InputController]
+  C --> G[Game]
+
+- B --> D[MemoryClient]
+
+* H --> D[MemoryClient]
+  D <--> M[(Game Memory)]
+
+- B --> E[EldenRewardMemory]
+
+* H --> E[EldenRewardMemory]
+  @@
+
+- %% Data/config side
+- D --> F[(ArenaDB YAML)]
+
+* %% Data/config side
+* D --> F[(ArenaDB YAML)]
+  @@
+
+- %% Legacy vision stack (optional)
+- L --> C
+- L --> R[EldenReward - Vision]
+
+* %% Legacy envs kept for reference only
+* L[EldenEnv - Vision] -.deprecated .-> C
+* L -.deprecated .-> R[EldenReward - Vision]
+  @@
+  -## Modes
+
+- -- MEMORY mode:
+- - Env: `EldenMemoryEnv`
+- - Observation: numeric state vector (hp, stamina, boss hp, time alive, phase)
+- - Reset: instant via `MemoryClient.reset_arena`
+    -- VISION mode (legacy):
+- - Env: `EldenEnv`
+- - Observation: image + hp/stamina from vision
+- - Reset: instant via `MemoryClient.reset_arena` (hybrid). No `walkToBoss.py` usage.
+    +## Observation and rewards
+
+* +- Observation (default):
+* - `img`: `(MODEL_HEIGHT, MODEL_WIDTH, 3)` uint8
+* - `prev_actions`: `(10, NUMBER_DISCRETE_ACTIONS, 1)` uint8
+* - `state`: `(5,)` float32 = `[hp, stamina, boss_hp, time_alive_s, arena_phase]`
+* +- Reward/termination: computed purely from memory values via `EldenRewardMemory`.
+  @@
+  -## Notes on safety and scope
+  +## Requirements for real memory backend
+* +- SoulsGym installed and importable
+  +- Elden Ring process available and running offline
+  +- Addresses file for Elden Ring present (see `examples/data/eldenring/addresses.yaml`)
+  +- New game save recommended (stability/safety)
+* +If SoulsGym isn't available, set `SIMULATE_MEMORY=True` for local dry-runs (no learning value).
+* +## Notes on safety and scope
+  @@
+  -## Contributing
+  +## Extending state and future work
+* +- Add more memory features: exact `player_pose`, `lock_on`, `in_combat`, FP/MP, debuffs, weapon data
+  +- When boss entity offsets are known, implement boss HP read/write and better arena resets
+  +- Optional signature scanning and version gating for robustness
+* +## Contributing
+  @@
+  -This project builds on the original EldenRL and community work. The vision pipeline remains available as a legacy option, while new development focuses on memory-based arenas.
+  +This project builds on the original EldenRL and SoulsGym work. The legacy vision-only env remains for reference, but all training should use the hybrid environment.
+  \*\*\* End Patch
+  PATCH
 ```
 
-```markdown
+````markdown
 <<'PATCH'
-*** Begin Patch
-*** Update File: README.md
+**_ Begin Patch
+_** Update File: README.md
 @@
 -# EldenRL (Hybrid) – Memory-based arenas with optional vision
 +# EldenRL (Hybrid) – Single pipeline using vision + memory
 @@
 -EldenRL now supports instant, memory-based resets for boss arenas while keeping the original vision-based observation loop available. You can train either:
--
--- MEMORY mode: No screen capture. Observations come from game memory (hp, stamina, boss hp, etc.).
--- VISION mode (legacy): Uses screenshots for observations, but resets are now instant and memory-based.
-+This project now uses a single environment that combines a real game image (for spatial context) with precise state read from game memory (hp, stamina, boss hp, etc.).
-@@
--## Requirements
-+## Requirements
-@@
--- MEMORY mode: PyYAML (and your chosen memory read/write backend when you implement it)
--- VISION mode: OpenCV, `mss`, Tesseract OCR
-+- OpenCV, `mss`, Tesseract OCR (for image capture)
-+- SoulsGym (for real Elden Ring memory access)
-@@
--## Quick start
-+## Quick start
-@@
--2. Choose mode in `main.py` via `ENV_MODE`: `"MEMORY"` or `"VISION"`
--3. For MEMORY mode:
--   - Copy `config/memory_arenas.sample.yaml` to `config/memory_arenas.yaml`
--   - Fill in addresses/coords for your target boss
--   - Set `MEMORY_CONFIG_PATH` in `main.py`
--4. Run `python main.py`
-+2. Configure `main.py` (Hybrid is default)
-+3. Ensure SoulsGym is installed and Elden Ring is running (offline) on a fixed game version
-+4. Run `python main.py`
-@@
--## Architecture
-+## Architecture
-@@
--```mermaid
--flowchart LR
--  A[SB3 PPO Agent] --> B[EldenMemoryEnv]
--  A -. legacy .-> L[EldenEnv - Vision]
--
--  B --> C[InputController]
--  C --> G[Game]
--
--  B --> D[MemoryClient]
--  D <--> M[(Game Memory)]
--
--  B --> E[EldenRewardMemory]
--
--  %% Data/config side
--  D --> F[(ArenaDB YAML)]
--  subgraph Future/Planned
--    S[SignatureScanner]
--    O[OffsetDB]
--    V[VersionCompatibility]
--    AC[AntiCheatMitigation]
--    AM[ArenaManager]
--  end
--  D -. integrates .-> S
--  S -. feeds .-> O
--  O -. used by .-> D
--  D -. version gate .-> V
--  D -. safety .-> AC
--  AM -. authoring .-> F
--
--  %% Legacy vision stack (optional)
--  L --> C
--  L --> R[EldenReward - Vision]
--```
-+```mermaid
-+flowchart LR
-+  A[SB3 PPO Agent] --> H[EldenHybridEnv]
-+
-+  H --> C[InputController]
-+  C --> G[Game]
-+
-+  H --> D[MemoryClient]
-+  D <--> M[(Game Memory)]
-+
-+  H --> E[EldenRewardMemory]
-+
-+  %% Data/config side
-+  D --> F[(ArenaDB YAML)]
-+  subgraph Future/Planned
-+    S[SignatureScanner]
-+    O[OffsetDB]
-+    V[VersionCompatibility]
-+    AC[AntiCheatMitigation]
-+    AM[ArenaManager]
-+  end
-+  D -. integrates .-> S
-+  S -. feeds .-> O
-+  O -. used by .-> D
-+  D -. version gate .-> V
-+  D -. safety .-> AC
-+  AM -. authoring .-> F
-+
-+  %% Legacy envs kept for reference only
-+  L[EldenEnv - Vision] -.deprecated .-> C
-+  L -.deprecated .-> R[EldenReward - Vision]
-+```
-@@
--## Modes
--
--- MEMORY mode:
--  - Env: `EldenMemoryEnv`
--  - Observation: numeric state vector (hp, stamina, boss hp, time alive, phase)
--  - Reset: instant via `MemoryClient.reset_arena`
--- VISION mode (legacy):
--  - Env: `EldenEnv`
--  - Observation: image + hp/stamina from vision
--  - Reset: instant via `MemoryClient.reset_arena` (hybrid). No `walkToBoss.py` usage.
-+## Observation and rewards
-+
-+- Observation (default):
-+  - `img`: `(MODEL_HEIGHT, MODEL_WIDTH, 3)` uint8
-+  - `prev_actions`: `(10, NUMBER_DISCRETE_ACTIONS, 1)` uint8
-+  - `state`: `(5,)` float32 = `[hp, stamina, boss_hp, time_alive_s, arena_phase]`
-+
-+- Reward/termination: computed purely from memory values via `EldenRewardMemory`.
-@@
--## Notes on safety and scope
-+## Requirements for real memory backend
-+
-+- SoulsGym installed and importable
-+- Elden Ring process available and running offline
-+- Addresses file for Elden Ring present (see `examples/data/eldenring/addresses.yaml`)
-+- New game save recommended (stability/safety)
-+
-+If SoulsGym isn't available, set `SIMULATE_MEMORY=True` for local dry-runs (no learning value).
-+
-+## Notes on safety and scope
-@@
--## Contributing
-+## Extending state and future work
-+
-+- Add more memory features: exact `player_pose`, `lock_on`, `in_combat`, FP/MP, debuffs, weapon data
-+- When boss entity offsets are known, implement boss HP read/write and better arena resets
-+- Optional signature scanning and version gating for robustness
-+
-+## Contributing
-@@
--This project builds on the original EldenRL and community work. The vision pipeline remains available as a legacy option, while new development focuses on memory-based arenas.
-+This project builds on the original EldenRL and SoulsGym work. The legacy vision-only env remains for reference, but all training should use the hybrid environment.
-*** End Patch
-PATCH
-```
 
-```markdown
+- -- MEMORY mode: No screen capture. Observations come from game memory (hp, stamina, boss hp, etc.).
+  -- VISION mode (legacy): Uses screenshots for observations, but resets are now instant and memory-based.
+  +This project now uses a single environment that combines a real game image (for spatial context) with precise state read from game memory (hp, stamina, boss hp, etc.).
+  @@
+  -## Requirements
+  +## Requirements
+  @@
+  -- MEMORY mode: PyYAML (and your chosen memory read/write backend when you implement it)
+  -- VISION mode: OpenCV, `mss`, Tesseract OCR
+  +- OpenCV, `mss`, Tesseract OCR (for image capture)
+  +- SoulsGym (for real Elden Ring memory access)
+  @@
+  -## Quick start
+  +## Quick start
+  @@
+  -2. Choose mode in `main.py` via `ENV_MODE`: `"MEMORY"` or `"VISION"`
+  -3. For MEMORY mode:
+- - Copy `config/memory_arenas.sample.yaml` to `config/memory_arenas.yaml`
+- - Fill in addresses/coords for your target boss
+- - Set `MEMORY_CONFIG_PATH` in `main.py`
+    -4. Run `python main.py`
+    +2. Configure `main.py` (Hybrid is default)
+    +3. Ensure SoulsGym is installed and Elden Ring is running (offline) on a fixed game version
+    +4. Run `python main.py`
+    @@
+    -## Architecture
+    +## Architecture
+    @@
+    -```mermaid
+    -flowchart LR
+- A[SB3 PPO Agent] --> B[EldenMemoryEnv]
+- A -. legacy .-> L[EldenEnv - Vision]
+-
+- B --> C[InputController]
+- C --> G[Game]
+-
+- B --> D[MemoryClient]
+- D <--> M[(Game Memory)]
+-
+- B --> E[EldenRewardMemory]
+-
+- %% Data/config side
+- D --> F[(ArenaDB YAML)]
+- subgraph Future/Planned
+- S[SignatureScanner]
+- O[OffsetDB]
+- V[VersionCompatibility]
+- AC[AntiCheatMitigation]
+- AM[ArenaManager]
+- end
+- D -. integrates .-> S
+- S -. feeds .-> O
+- O -. used by .-> D
+- D -. version gate .-> V
+- D -. safety .-> AC
+- AM -. authoring .-> F
+-
+- %% Legacy vision stack (optional)
+- L --> C
+- L --> R[EldenReward - Vision] -`
++`mermaid
+  +flowchart LR
+
+* A[SB3 PPO Agent] --> H[EldenHybridEnv]
+*
+* H --> C[InputController]
+* C --> G[Game]
+*
+* H --> D[MemoryClient]
+* D <--> M[(Game Memory)]
+*
+* H --> E[EldenRewardMemory]
+*
+* %% Data/config side
+* D --> F[(ArenaDB YAML)]
+* subgraph Future/Planned
+* S[SignatureScanner]
+* O[OffsetDB]
+* V[VersionCompatibility]
+* AC[AntiCheatMitigation]
+* AM[ArenaManager]
+* end
+* D -. integrates .-> S
+* S -. feeds .-> O
+* O -. used by .-> D
+* D -. version gate .-> V
+* D -. safety .-> AC
+* AM -. authoring .-> F
+*
+* %% Legacy envs kept for reference only
+* L[EldenEnv - Vision] -.deprecated .-> C
+* L -.deprecated .-> R[EldenReward - Vision]
+  +```
+  @@
+  -## Modes
+
+- -- MEMORY mode:
+- - Env: `EldenMemoryEnv`
+- - Observation: numeric state vector (hp, stamina, boss hp, time alive, phase)
+- - Reset: instant via `MemoryClient.reset_arena`
+    -- VISION mode (legacy):
+- - Env: `EldenEnv`
+- - Observation: image + hp/stamina from vision
+- - Reset: instant via `MemoryClient.reset_arena` (hybrid). No `walkToBoss.py` usage.
+    +## Observation and rewards
+
+* +- Observation (default):
+* - `img`: `(MODEL_HEIGHT, MODEL_WIDTH, 3)` uint8
+* - `prev_actions`: `(10, NUMBER_DISCRETE_ACTIONS, 1)` uint8
+* - `state`: `(5,)` float32 = `[hp, stamina, boss_hp, time_alive_s, arena_phase]`
+* +- Reward/termination: computed purely from memory values via `EldenRewardMemory`.
+  @@
+  -## Notes on safety and scope
+  +## Requirements for real memory backend
+* +- SoulsGym installed and importable
+  +- Elden Ring process available and running offline
+  +- Addresses file for Elden Ring present (see `examples/data/eldenring/addresses.yaml`)
+  +- New game save recommended (stability/safety)
+* +If SoulsGym isn't available, set `SIMULATE_MEMORY=True` for local dry-runs (no learning value).
+* +## Notes on safety and scope
+  @@
+  -## Contributing
+  +## Extending state and future work
+* +- Add more memory features: exact `player_pose`, `lock_on`, `in_combat`, FP/MP, debuffs, weapon data
+  +- When boss entity offsets are known, implement boss HP read/write and better arena resets
+  +- Optional signature scanning and version gating for robustness
+* +## Contributing
+  @@
+  -This project builds on the original EldenRL and community work. The vision pipeline remains available as a legacy option, while new development focuses on memory-based arenas.
+  +This project builds on the original EldenRL and SoulsGym work. The legacy vision-only env remains for reference, but all training should use the hybrid environment.
+  \*\*\* End Patch
+  PATCH
+````
+
+````markdown
 # EldenRL (Hybrid) – Single pipeline using vision + memory
 
 EldenRL now uses one unified environment that combines a real game image (for spatial context) with precise state read from game memory (hp, stamina, boss hp, etc.). Rewards and termination come from memory; the image is for perception of obstacles and motion.
@@ -1214,6 +1236,7 @@ arenas:
     second_phase: { trigger_flag_addr: 0xDEADBEEF }
     notes: "Replace placeholders with valid addresses for your version"
 ```
+````
 
 ## Architecture
 
@@ -1253,6 +1276,7 @@ flowchart LR
 ## Observation and rewards
 
 - Observation (default):
+
   - `img`: `(MODEL_HEIGHT, MODEL_WIDTH, 3)` uint8
   - `prev_actions`: `(10, NUMBER_DISCRETE_ACTIONS, 1)` uint8
   - `state`: `(5,)` float32 = `[hp, stamina, boss_hp, time_alive_s, arena_phase]`
@@ -1289,7 +1313,7 @@ If SoulsGym isn't available, set `SIMULATE_MEMORY=True` for local dry-runs (no l
 
 This project builds on the original EldenRL and SoulsGym work. The legacy vision-only env remains for reference, but all training should use the hybrid environment.
 
-```
+````
 
 ```python
 import os
@@ -1545,11 +1569,12 @@ class MemoryClient:
 
 
 
-```
+````
 
 Status: Implemented a single hybrid pipeline that uses a screenshot for spatial context and memory reads for rewards/termination. Wired training to this unified env and hooked memory to the SoulsGym Elden Ring backend you included.
 
 What I changed
+
 - Added `EldenHybridEnv.py`: one env that returns:
   - img: resized screenshot
   - prev_actions: one-hot history
@@ -1565,6 +1590,7 @@ What I changed
 - Updated `README.md`: documents the single-pipeline hybrid architecture, requirements, and extension path
 
 What the hybrid implementation needs to start working (memory addresses)
+
 - With SoulsGym ER backend, it expects valid address definitions in `examples/data/eldenring/addresses.yaml`. For our current hybrid feature set, the necessary records are:
   - Player HP and Max HP: `PlayerHP`, `PlayerMaxHP`
   - Player Stamina (SP) and Max SP: `PlayerSP`, `PlayerMaxSP`
@@ -1576,10 +1602,12 @@ What the hybrid implementation needs to start working (memory addresses)
   - Until then, boss-damage reward terms will be inert; HP/defense-related shaping still works (player HP deltas, damage avoidance time, etc.)
 
 Explicit acknowledgment of no test stubs
+
 - Default path is real memory access via SoulsGym; no simulation is used unless you set `SIMULATE_MEMORY=True`.
 - Unit tests are omitted; use your existing CLI sim_loop for quick reward sanity, as requested.
 
 Future-proofing: how to extend the hybrid state cleanly
+
 - Add memory-backed features behind opt-in flags to avoid breaking the state shape by default:
   - `player_pose` (x, y, z, yaw)
   - `lock_on` / `in_combat` flags
@@ -1589,15 +1617,18 @@ Future-proofing: how to extend the hybrid state cleanly
 - When a feature is ready, we can append values to `state` and/or expose an additional sub-key (e.g., `pose`) with a config toggle. Keep the default observation shape stable to not invalidate trained models unintentionally.
 
 How to run now
+
 - Ensure Elden Ring is running offline. Install SoulsGym.
 - Verify `examples/data/eldenring/addresses.yaml` matches your game version.
 - In `main.py`, leave `SIMULATE_MEMORY=False` and run `python main.py`.
 - If you only want a quick wiring check without touching the game, set `SIMULATE_MEMORY=True` (no learning value, just flow).
 
 Important limitations right now
+
 - Boss HP read/write: placeholder. Implementing this with real offsets is the next needed change to fully unlock boss-damage rewards. I’ll add it as soon as we have either an offset path or a SoulsGym wrapper for ER boss entities.
 
 Next steps I can take
+
 - Add a real `read_boss_hp()` path using either a lock-on-target HP address or SoulsGym entity lookup, then enable boss-damage reward terms fully.
 - Add optional `player_pose` and `lock_on` to the observation with config flags, maintaining default shape.
 
@@ -1610,7 +1641,7 @@ Next steps I can take
 
 **User**
 
-move the memory addresses fron the soulsgym example into our existing yaml config, where the only thing needed for each boss in specfici will be giving the boss names, the coorindates playerss should spawn (so they spawn at the door entrance of that arena for example), and the nearest bonfire (so the environment state can be fully reset in case we opt for resetting via this, before then telporting to player spawn coords), and the boss-specific stuff like its phase trigger,  And then remove anything that isnt the hybrid env weve i.e anything relating to the old pipeline / codebase that  we dont use anymore because remembering we;re opting for one way to train
+move the memory addresses fron the soulsgym example into our existing yaml config, where the only thing needed for each boss in specfici will be giving the boss names, the coorindates playerss should spawn (so they spawn at the door entrance of that arena for example), and the nearest bonfire (so the environment state can be fully reset in case we opt for resetting via this, before then telporting to player spawn coords), and the boss-specific stuff like its phase trigger, And then remove anything that isnt the hybrid env weve i.e anything relating to the old pipeline / codebase that we dont use anymore because remembering we;re opting for one way to train
 
 ---
 
@@ -1642,25 +1673,94 @@ arenas:
       yaw: 0.0
       pitch: 0.0
     addresses:
-      PlayerHP: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x138], type: int }
-      PlayerMaxHP: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x13C], type: int }
-      PlayerSP: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x154], type: int }
-      PlayerMaxSP: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x158], type: int }
-      PlayerMP: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x148], type: int }
-      PlayerMaxMP: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x150], type: int }
-      PlayerXYZA: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x6C0], type: bytes, length: 16 }
-      PlayerLocalXYZ: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x68, 0x70], type: bytes, length: 12 }
-      PlayerAnimation: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x18, 0x20], type: int }
-      PlayerGravity: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x68, 0x1D3], type: int }
-      AllowPlayerDeath: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x19B], type: int }
+      PlayerHP:
+        {
+          base: WorldChrMan,
+          offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x138],
+          type: int,
+        }
+      PlayerMaxHP:
+        {
+          base: WorldChrMan,
+          offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x13C],
+          type: int,
+        }
+      PlayerSP:
+        {
+          base: WorldChrMan,
+          offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x154],
+          type: int,
+        }
+      PlayerMaxSP:
+        {
+          base: WorldChrMan,
+          offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x158],
+          type: int,
+        }
+      PlayerMP:
+        {
+          base: WorldChrMan,
+          offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x148],
+          type: int,
+        }
+      PlayerMaxMP:
+        {
+          base: WorldChrMan,
+          offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x150],
+          type: int,
+        }
+      PlayerXYZA:
+        {
+          base: WorldChrMan,
+          offsets: [0x10EF8, 0x0, 0x6C0],
+          type: bytes,
+          length: 16,
+        }
+      PlayerLocalXYZ:
+        {
+          base: WorldChrMan,
+          offsets: [0x10EF8, 0x0, 0x190, 0x68, 0x70],
+          type: bytes,
+          length: 12,
+        }
+      PlayerAnimation:
+        {
+          base: WorldChrMan,
+          offsets: [0x10EF8, 0x0, 0x190, 0x18, 0x20],
+          type: int,
+        }
+      PlayerGravity:
+        {
+          base: WorldChrMan,
+          offsets: [0x10EF8, 0x0, 0x190, 0x68, 0x1D3],
+          type: int,
+        }
+      AllowPlayerDeath:
+        {
+          base: WorldChrMan,
+          offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x19B],
+          type: int,
+        }
       LastGrace: { base: GameMan, offsets: [0xB30], type: int }
       Time: { base: GameDataMan, offsets: [0xA0], type: int }
-      LocalCam: { base: FieldArea, offsets: [0x20, 0x18, 0x30], type: bytes, length: 28 }
-      ChunkCamXYZ: { base: FieldArea, offsets: [0x20, 0xD0, 0x40], type: bytes, length: 12 }
+      LocalCam:
+        {
+          base: FieldArea,
+          offsets: [0x20, 0x18, 0x30],
+          type: bytes,
+          length: 28,
+        }
+      ChunkCamXYZ:
+        {
+          base: FieldArea,
+          offsets: [0x20, 0xD0, 0x40],
+          type: bytes,
+          length: 12,
+        }
       PlayerStats: { base: GameDataMan, offsets: [0x08, 0x3C], type: int }
       LockOn: { base: LockTgtMan, offsets: [0x2831], type: bytes, length: 1 }
     second_phase:
-      trigger_flag_addr: null  # fill when known for this boss
+      trigger_flag_addr: null # fill when known for this boss
     notes: "Fill spawn coords and verify addresses for your ER version; boss HP offsets TBD."
 
   # Minimal template for a new arena (duplicate and edit)
@@ -1676,17 +1776,18 @@ arenas:
       PlayerSP: { base: WorldChrMan, offsets: [], type: int }
       PlayerMaxSP: { base: WorldChrMan, offsets: [], type: int }
       PlayerXYZA: { base: WorldChrMan, offsets: [], type: bytes, length: 16 }
-      PlayerLocalXYZ: { base: WorldChrMan, offsets: [], type: bytes, length: 12 }
+      PlayerLocalXYZ:
+        { base: WorldChrMan, offsets: [], type: bytes, length: 12 }
       LastGrace: { base: GameMan, offsets: [], type: int }
       LockOn: { base: LockTgtMan, offsets: [], type: bytes, length: 1 }
     second_phase: { trigger_flag_addr: null }
     notes: "Use this as a starting point for new bosses."
-
 ```
 
 Status: I migrated SoulsGym Elden Ring address knowledge into our YAML, created a single hybrid environment pipeline, and removed legacy env/reward files. The hybrid env uses memory for reward/termination and the screenshot for spatial context. Training now always uses this env.
 
 What I changed
+
 - Updated `config/memory_arenas.sample.yaml`:
   - Added `addresses:` block with the core player-related addresses from `examples/data/eldenring/addresses.yaml` (HP, MaxHP, SP, MaxSP, MP, MaxMP, pose, camera, last grace, lock-on, time).
   - Added `nearest_bonfire_key` per arena (string that matches a key in `examples/data/eldenring/bonfires.yaml`), plus `second_phase.trigger_flag_addr` placeholder.
@@ -1700,11 +1801,13 @@ What I changed
   - `InputController.py`, `train.py`, `main.py`
 
 Notes on YAML and addresses
+
 - The hybrid env currently reads player hp/stamina and pose via SoulsGym. Boss HP integration still needs a reliable boss HP path:
   - You can later add a boss HP address under each arena’s `addresses` (e.g., `BossHP` pointing to the active boss entity).
   - When that’s in, we’ll wire `MemoryClient.read_boss_hp()` to use it.
 
 What you need to fill per boss in the YAML
+
 - `name`: human-readable boss name.
 - `player_spawn`: x, y, z, rot at the arena entrance.
 - `nearest_bonfire_key`: a key from `examples/data/eldenring/bonfires.yaml` to reset world state when desired before teleporting.
@@ -1712,6 +1815,7 @@ What you need to fill per boss in the YAML
 - Optionally refine `addresses` if your Elden Ring version differs.
 
 Impact
+
 - One unified training pipeline, no legacy modes.
 - Memory-required info centralized in the YAML; per-boss spawn and bonfire info ready for reset flows.
 - Training runs via `EldenHybridEnv` only.
@@ -1724,7 +1828,7 @@ Impact
 
 **User**
 
-we should still modularise things, so having the arenas defined in a separate yaml config to the player and other related memory stuff sshould be what we're doing. We still have to be smart about the project setup. So at least in my head a yaml for the arenas we end up defining info for / setting up, but also separating information like how the soulsgym example did it (although of course with empty files so far) - they have actions.yaml, addresses.yaml, bonfires.yaml, coordinates.yaml, keys.yaml and player_stats.yaml. This of course depends on how many categories of memory configs we will be dependening on / could use in the future, but this sort of split seems appropriate. you can see examples of how these were used in  the darksouls3 folder @darksouls3/ but I suppose the coordinates.yaml would be what we're already describing in the arenas yaml. Split the info up into the appropriate yaml config and place them into the /config directory of ours. 
+we should still modularise things, so having the arenas defined in a separate yaml config to the player and other related memory stuff sshould be what we're doing. We still have to be smart about the project setup. So at least in my head a yaml for the arenas we end up defining info for / setting up, but also separating information like how the soulsgym example did it (although of course with empty files so far) - they have actions.yaml, addresses.yaml, bonfires.yaml, coordinates.yaml, keys.yaml and player_stats.yaml. This of course depends on how many categories of memory configs we will be dependening on / could use in the future, but this sort of split seems appropriate. you can see examples of how these were used in the darksouls3 folder @darksouls3/ but I suppose the coordinates.yaml would be what we're already describing in the arenas yaml. Split the info up into the appropriate yaml config and place them into the /config directory of ours.
 
 ---
 
@@ -2035,7 +2139,7 @@ arenas:
     map: Crumbling Farum Azula
     nearest_bonfire_key: "Crumbling Farum Azula - Dragon Temple"
     second_phase:
-      trigger_flag_addr: null  # fill when known
+      trigger_flag_addr: null # fill when known
     notes: "Fill spawn coords in coordinates.yaml; verify addresses per version."
 
   - id: 1
@@ -2044,8 +2148,6 @@ arenas:
     nearest_bonfire_key: ""
     second_phase: { trigger_flag_addr: null }
     notes: "Template entry."
-
-
 ```
 
 ```yaml
@@ -2068,8 +2170,6 @@ arenas:
     name: Template Boss
     player_spawn: { x: 0.0, y: 0.0, z: 0.0, rot: 0.0 }
     camera: { yaw: 0.0, pitch: 0.0 }
-
-
 ```
 
 ```yaml
@@ -2078,8 +2178,6 @@ arenas:
 
 "Crumbling Farum Azula - Dragon Temple": 13002956
 "Elphael, Brace of the Haligtree - Malenia, Goddess of Rot": 15002950
-
-
 ```
 
 ```yaml
@@ -2087,32 +2185,65 @@ arenas:
 # Copy to config/addresses.yaml and verify for your game version.
 
 bases_by_pattern:
-  GameDataMan: { pattern: "\\x48\\x8B\\x05....\\x48\\x85\\xC0\\x74\\x05\\x48\\x8B\\x40\\x58\\xC3\\xC3" }
-  WorldChrMan: { pattern: "\\x48\\x8B\\x05....\\x48\\x85\\xC0\\x74\\x0F\\x48\\x39\\x88" }
-  GameMan: { pattern: "\\x48\\x8B\\x05....\\x80\\xB8....\\x0D\\x0F\\x94\\xC0\\xC3" }
-  FieldArea: { pattern: "\\x48\\x8B\\x3D....\\x49\\x8B\\xD8\\x48\\x8B\\xF2\\x4C\\x8B\\xF1\\x48\\x85\\xFF" }
+  GameDataMan:
+    {
+      pattern: "\\x48\\x8B\\x05....\\x48\\x85\\xC0\\x74\\x05\\x48\\x8B\\x40\\x58\\xC3\\xC3",
+    }
+  WorldChrMan:
+    { pattern: "\\x48\\x8B\\x05....\\x48\\x85\\xC0\\x74\\x0F\\x48\\x39\\x88" }
+  GameMan:
+    { pattern: "\\x48\\x8B\\x05....\\x80\\xB8....\\x0D\\x0F\\x94\\xC0\\xC3" }
+  FieldArea:
+    {
+      pattern: "\\x48\\x8B\\x3D....\\x49\\x8B\\xD8\\x48\\x8B\\xF2\\x4C\\x8B\\xF1\\x48\\x85\\xFF",
+    }
   LockTgtMan: { pattern: "\\x48\\x8B\\x0D....\\x0F\\x57\\xD2\\xF3\\x0F\\x10." }
 
 addresses:
-  PlayerHP: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x138], type: int }
-  PlayerMaxHP: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x13C], type: int }
-  PlayerSP: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x154], type: int }
-  PlayerMaxSP: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x158], type: int }
-  PlayerMP: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x148], type: int }
-  PlayerMaxMP: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x150], type: int }
-  PlayerXYZA: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x6C0], type: bytes, length: 16 }
-  PlayerLocalXYZ: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x68, 0x70], type: bytes, length: 12 }
-  PlayerAnimation: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x18, 0x20], type: int }
-  PlayerGravity: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x68, 0x1D3], type: int }
-  AllowPlayerDeath: { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x19B], type: int }
+  PlayerHP:
+    { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x138], type: int }
+  PlayerMaxHP:
+    { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x13C], type: int }
+  PlayerSP:
+    { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x154], type: int }
+  PlayerMaxSP:
+    { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x158], type: int }
+  PlayerMP:
+    { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x148], type: int }
+  PlayerMaxMP:
+    { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x150], type: int }
+  PlayerXYZA:
+    {
+      base: WorldChrMan,
+      offsets: [0x10EF8, 0x0, 0x6C0],
+      type: bytes,
+      length: 16,
+    }
+  PlayerLocalXYZ:
+    {
+      base: WorldChrMan,
+      offsets: [0x10EF8, 0x0, 0x190, 0x68, 0x70],
+      type: bytes,
+      length: 12,
+    }
+  PlayerAnimation:
+    { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x18, 0x20], type: int }
+  PlayerGravity:
+    {
+      base: WorldChrMan,
+      offsets: [0x10EF8, 0x0, 0x190, 0x68, 0x1D3],
+      type: int,
+    }
+  AllowPlayerDeath:
+    { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x19B], type: int }
   LastGrace: { base: GameMan, offsets: [0xB30], type: int }
   Time: { base: GameDataMan, offsets: [0xA0], type: int }
-  LocalCam: { base: FieldArea, offsets: [0x20, 0x18, 0x30], type: bytes, length: 28 }
-  ChunkCamXYZ: { base: FieldArea, offsets: [0x20, 0xD0, 0x40], type: bytes, length: 12 }
+  LocalCam:
+    { base: FieldArea, offsets: [0x20, 0x18, 0x30], type: bytes, length: 28 }
+  ChunkCamXYZ:
+    { base: FieldArea, offsets: [0x20, 0xD0, 0x40], type: bytes, length: 12 }
   PlayerStats: { base: GameDataMan, offsets: [0x08, 0x3C], type: int }
   LockOn: { base: LockTgtMan, offsets: [0x2831], type: bytes, length: 1 }
-
-
 ```
 
 ```yaml
@@ -2121,8 +2252,6 @@ addresses:
 
 PLAYER_HP: 2140
 PLAYER_STAMINA: 118
-
-
 ```
 
 ```yaml
@@ -2140,8 +2269,6 @@ q: weapon_art
 e: use_item
 ctrl: crouch
 space: jump
-
-
 ```
 
 ```yaml
@@ -2170,13 +2297,12 @@ space: jump
 20: crouch_attack
 21: heal
 99: warp_to_bonfire
-
-
 ```
 
 Status: Split configuration into modular YAML files under `config/`, wired the loader in `MemoryClient`, and kept the hybrid-only pipeline. This mirrors the SoulsGym structure while keeping arenas as our per-boss metadata.
 
 What I changed
+
 - Config modularization (new sample files under `config/`):
   - `arenas.sample.yaml`: per-boss metadata: `id`, `name`, `map`, `nearest_bonfire_key`, `second_phase.trigger_flag_addr`, notes
   - `coordinates.sample.yaml`: per-boss `player_spawn` and `camera`
@@ -2193,6 +2319,7 @@ What I changed
   - Training uses hybrid env only
 
 How to proceed (fill these to go live)
+
 - `config/addresses.yaml`: verify the player addresses for your ER version (start from sample; these are version-specific).
 - `config/bonfires.yaml`: add keys you’ll use (copy from `examples/data/eldenring/bonfires.yaml`).
 - `config/arenas.yaml`: for each boss, set `name`, `nearest_bonfire_key`, optional phase flag address.
@@ -2200,6 +2327,7 @@ How to proceed (fill these to go live)
 - Optional: `player_stats.yaml`, `keys.yaml`, `actions.yaml` customization.
 
 Notes
+
 - Boss HP still needs a path. When we have a stable boss HP offset or SoulsGym accessor, we’ll add it to `addresses.yaml` and wire `MemoryClient.read_boss_hp()`. Until then, boss-damage rewards are placeholder.
 - The split keeps arenas clean: spawn and bonfire in our configs; low-level memory layout in `addresses.yaml` compatible with SoulsGym’s patterns.
 
@@ -2212,7 +2340,7 @@ Notes
 
 **User**
 
-thanks, now we need to update the current cli implementation and the memoryclient to be able to run simulations. I have a new cheat  table at my disposal for cheat engine, and due to my inexperience I needd your help telling me how I can leverage it to get the memory locations set up to at least see our training in action with the game. I have provided a new documentation @cheattable-brief-overview.mdc  that is very brief and just mentions to categories available in the existing options. I will also note that in elden ring there is no "boss hp" it simply is targeted enemy, which is fine because for bosses we can assume we're always targetting (locked on state) to it, and its the only enemy. Using this see if you can identify how we should get the relevant memory addresses, on top of the existing ones already given by soulsgym. Because the translation of "exporting" options / addresses from cheat engine isnt exactly obvious to me
+thanks, now we need to update the current cli implementation and the memoryclient to be able to run simulations. I have a new cheat table at my disposal for cheat engine, and due to my inexperience I needd your help telling me how I can leverage it to get the memory locations set up to at least see our training in action with the game. I have provided a new documentation @cheattable-brief-overview.mdc that is very brief and just mentions to categories available in the existing options. I will also note that in elden ring there is no "boss hp" it simply is targeted enemy, which is fine because for bosses we can assume we're always targetting (locked on state) to it, and its the only enemy. Using this see if you can identify how we should get the relevant memory addresses, on top of the existing ones already given by soulsgym. Because the translation of "exporting" options / addresses from cheat engine isnt exactly obvious to me
 
 ---
 
@@ -2631,7 +2759,7 @@ def cmd_sim_loop(iterations: int, boss: int, fps: float) -> int:
             obs, info = env.reset()
         time.sleep(0.0)
     env.close()
-    print(f"✅ Simulated {iterations} steps. Total reward: {round(total_r, 2)}")
+    print(f" Simulated {iterations} steps. Total reward: {round(total_r, 2)}")
     return 0
 
 
@@ -2665,6 +2793,7 @@ if __name__ == "__main__":
 Here’s how we’ll proceed to enable live simulations and gather missing addresses using your Cheat Engine table.
 
 ### Update summary
+
 - CLI now validates modular configs and runs a sim loop:
   - Validate: `python tools/cli.py validate` checks `config/` for `arenas/coordinates/bonfires/addresses`.
   - Sim loop (no game): `python tools/cli.py sim_loop 200 --boss 8 --fps 24` to sanity-check the training loop.
@@ -2674,6 +2803,7 @@ Here’s how we’ll proceed to enable live simulations and gather missing addre
   - Boss HP: tries `TargetHP/TargetMaxHP` if you add them to `addresses.yaml`, else falls back to placeholder.
 
 ### Use Cheat Engine to obtain missing addresses
+
 Goal: augment `config/addresses.yaml` with any missing pointers so MemoryClient/SoulsGym can read everything needed.
 
 - Player-level addresses (already in sample):
@@ -2688,6 +2818,7 @@ Goal: augment `config/addresses.yaml` with any missing pointers so MemoryClient/
   - MemoryClient will then normalize boss HP from these automatically.
 
 Cheat Engine steps (using your new table)
+
 - Attach to Elden Ring with the CE table, enable it.
 - Use features from your overview to find target pointers:
   - For Target HP:
@@ -2706,6 +2837,7 @@ Cheat Engine steps (using your new table)
     - Try aligning with known bases in `bases_by_pattern` (e.g., `WorldChrMan`, `GameDataMan`, `FieldArea`, `LockTgtMan`). If your CE table exposes module-relative addresses, resolve them to a base + offsets chain if possible.
 
 Populate addresses.yaml
+
 - Under `addresses:` add:
   - Target HP
     - Example:
@@ -2715,6 +2847,7 @@ Populate addresses.yaml
 - Save to `config/addresses.yaml` (copy from sample and fill values).
 
 Run training live
+
 - Ensure `main.py` has `SIMULATE_MEMORY=False`, and ER is running offline.
 - Fill:
   - `config/addresses.yaml` with verified player + target addresses
@@ -2724,6 +2857,7 @@ Run training live
 - Start: `python main.py`
 
 Notes on CE table usage
+
 - “Teleport, Coords, NoClip/FreeCam”:
   - Useful to validate `player_spawn` and ensure teleports are safe.
 - “Fast Travel and Warp”:
@@ -2736,4 +2870,3 @@ If you want, paste the pointer paths CE finds for the lock-on target HP here, an
 - CLI now validates modular configs and sim-loop; MemoryClient loads `config/` modular files.
 - How to use CE table to derive target HP pointers and integrate as `TargetHP/TargetMaxHP` for boss HP.
 - Clear steps to fill configs and run live training; no stubs required.
-
