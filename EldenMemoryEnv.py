@@ -41,10 +41,12 @@ class EldenMemoryEnv(gym.Env):
         # Systems
         self.mem = MemoryClient(
             process_name=config.get("PROCESS_NAME", "eldenring.exe"),
-            memory_config_path=config.get("MEMORY_CONFIG_PATH")
+            memory_config_path=config.get("MEMORY_CONFIG_PATH"),
+            simulate=bool(config.get("SIMULATE_MEMORY", False))
         )
         self.rewardGen = EldenRewardMemory(config)
-        self.input = InputController()
+        # Disable actual OS input when simulating to avoid interfering with the terminal/desktop
+        self.input = InputController(enabled=not bool(config.get("SIMULATE_MEMORY", False)))
 
         # Runtime
         self.action_history = []
@@ -84,20 +86,16 @@ class EldenMemoryEnv(gym.Env):
         # 2) Compute reward of previous step
         self.reward, death, boss_death, duel_won = self.rewardGen.update(hp, stam, boss_hp, self.first_step)
 
-        # 3) Check termination
-        if death:
-            self.done = True
-        else:
-            if (time.time() - self.t_start) > 600:
-                self.done = True
-            elif boss_death:
-                self.done = True
-        # PvP
-        if duel_won:
-            self.done = True
+        # 3) Check termination/truncation (Gymnasium API)
+        terminated = False
+        truncated = False
+        if death or boss_death or duel_won:
+            terminated = True
+        elif (time.time() - self.t_start) > 600:
+            truncated = True
 
         # 4) Execute action (still via keyboard simulation)
-        if not self.done:
+        if not (terminated or truncated):
             self.input.take_action(int(action))
 
         # 5) Observation
@@ -120,7 +118,7 @@ class EldenMemoryEnv(gym.Env):
         if dt < min_step:
             time.sleep(min_step - dt)
 
-        return obs, self.reward, self.done, {}
+        return obs, self.reward, terminated, truncated, {}
 
     def reset(self):
         # Ensure attached
@@ -146,7 +144,7 @@ class EldenMemoryEnv(gym.Env):
             "prev_actions": self.one_hot_prev_actions(),
             "state": np.asarray(self._read_state(), dtype=np.float32),
         }
-        return obs
+        return obs, {}
 
     def render(self, mode="human"):
         pass

@@ -15,16 +15,18 @@ class MemoryClient:
     Replace stub implementations with real memory read/write logic.
     """
 
-    def __init__(self, process_name: str = "eldenring.exe", memory_config_path: Optional[str] = None):
+    def __init__(self, process_name: str = "eldenring.exe", memory_config_path: Optional[str] = None, simulate: bool = False):
         self.process_name = process_name
         self.attached = False
         self._last_attach_attempt = 0.0
+        self.simulate = simulate
 
         # Cached state (for testing scaffolding). Replace with live reads.
         self._player_hp = 1.0
         self._player_stamina = 1.0
         self._boss_hp = 1.0
         self._player_pos = (0.0, 0.0, 0.0)
+        self._t_reset = time.time()
 
         # Arena DB from YAML (optional)
         self._arena_db: Dict[int, Dict[str, Any]] = {}
@@ -76,17 +78,31 @@ class MemoryClient:
     # ----- Reads -----
     def read_player_hp(self) -> float:
         """Return player HP in [0, 1]."""
-        # TODO: Replace with memory read
+        if self.simulate:
+            # Simple decay-and-bounce simulation
+            elapsed = max(0.0, time.time() - self._t_reset)
+            hp = max(0.0, 1.0 - 0.03 * (elapsed % 15))
+            self._player_hp = hp
+            return hp
         return float(self._player_hp)
 
     def read_player_stamina(self) -> float:
         """Return player stamina in [0, 1]."""
-        # TODO: Replace with memory read
+        if self.simulate:
+            elapsed = max(0.0, time.time() - self._t_reset)
+            # oscillate stamina between 0.4 and 1.0
+            stam = 0.7 + 0.3 * (0.5 - ((elapsed % 2.0) - 1.0) ** 2)
+            self._player_stamina = max(0.0, min(1.0, stam))
+            return self._player_stamina
         return float(self._player_stamina)
 
     def read_boss_hp(self) -> float:
         """Return boss HP in [0, 1] if a boss is active, else 1.0."""
-        # TODO: Replace with memory read and arena validation
+        if self.simulate:
+            elapsed = max(0.0, time.time() - self._t_reset)
+            boss_hp = max(0.0, 1.0 - 0.02 * elapsed)
+            self._boss_hp = boss_hp
+            return boss_hp
         return float(self._boss_hp)
 
     def read_player_position(self) -> Tuple[float, float, float]:
@@ -142,6 +158,7 @@ class MemoryClient:
         self.set_player_full_health()
         self.set_player_full_stamina()
         self.set_boss_hp(1.0)
+        self._t_reset = time.time()
 
     # ----- Test helpers (optional) -----
     def simulate_damage(self, player_delta: Optional[float] = None, boss_delta: Optional[float] = None) -> None:

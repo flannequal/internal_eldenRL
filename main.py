@@ -17,6 +17,8 @@ if __name__ == '__main__':
         "PROCESS_NAME": "eldenring.exe",
         # Optional: path to YAML arenas. Defaults: config/memory_arenas.yaml, then sample
         "MEMORY_CONFIG_PATH": r"config\memory_arenas.yaml",
+        # Enable offline simulation of memory values (no game required)
+        "SIMULATE_MEMORY": True,
     }
     CREATE_NEW_MODEL = True
          #Create a new model or resume training for an existing model
