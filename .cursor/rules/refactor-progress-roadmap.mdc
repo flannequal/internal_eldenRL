@@ -22,7 +22,7 @@ This rule tracks the ongoing architectural refactor from vision-only to memory-b
   - Uses memory-based arena reset; retains vision observations/reward
 - Shared input system: [InputController.py](mdc:InputController.py)
 - Training unchanged: [train.py](mdc:train.py)
-- Updated documentation: [README.md](mdc:README.md)
+- Updated documentation: [README.md](mdc:README.md) 
 
 Notes:
 - `walkToBoss.py` is not used anymore by default. Keep or delete depending on legacy needs.

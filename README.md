@@ -11,14 +11,14 @@ The training stack remains based on OpenAI `gym` (Gymnasium) and Stable-Baseline
 - Python 3.9.13
 - Stable-Baselines3, PyTorch
 - OpenCV, `mss`, Tesseract OCR (for image capture)
-- SoulsGym (for real Elden Ring memory access)
+  
+Note: This project is standalone. Other projects like “SoulsGym” are reference-only (useful for ideas).
 
 ## Quick start
 
 1. Install dependencies (venv recommended)
 2. Configure `main.py` (Hybrid is default)
-3. Ensure SoulsGym is installed and Elden Ring is running (offline) on a fixed game version
-4. Run `python main.py`
+3. Run `python main.py`
 
 ## Configuration
 
@@ -26,7 +26,7 @@ The training stack remains based on OpenAI `gym` (Gymnasium) and Stable-Baseline
 
 - `PROCESS_NAME`: game process (default: `eldenring.exe`)
 - `MEMORY_CONFIG_PATH`: optional YAML with per-boss arenas (spawn positions; used during reset)
-- `SIMULATE_MEMORY`: False to use real memory via SoulsGym; True for local dry-runs (no learning value)
+- `SIMULATE_MEMORY`: True to use offline simulated memory values for local dry-runs (no game required)
 - `MONITOR`, `PYTESSERACT_PATH`, `DEBUG_MODE`: for image capture/display
 - `BOSS`, `BOSS_HAS_SECOND_PHASE`, `DESIRED_FPS` etc.
 
@@ -96,12 +96,9 @@ flowchart LR
 
 ## Requirements for real memory backend
 
-- SoulsGym installed and importable
 - Elden Ring process available and running offline
-- Addresses file for Elden Ring present (see `examples/data/eldenring/addresses.yaml`)
+- Per-version addresses configured in YAML
 - New game save recommended (stability/safety)
-
-If SoulsGym isn't available, set `SIMULATE_MEMORY=True` for local dry-runs (no learning value).
 
 ## Notes on safety and scope
 
