@@ -55,7 +55,7 @@ Notes:
 ## Near-term milestones
 - M1: Real memory read/write for hp, stamina, boss hp, and player position
   - DoD: Deterministic hp/stamina reads; reliable teleport; boss hp reset
-- M2: First arena end-to-end (e.g., Malenia)
+- M2: First arena end-to-end (e.g., Beastman, farmum azula)
   - DoD: From reset() → spawn in arena → fight steps → death/boss kill → reset() works repeatedly
 - M3: Safety/compat
   - DoD: Check offline mode; add basic anti-cheat-safe toggles; basic version gating

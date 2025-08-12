@@ -8,8 +8,8 @@ process_name: eldenring.exe
 arenas:
   # Example entry – replace placeholders and add more arenas as needed
   - id: 8
-    name: Malenia, Blade of Miquella
-    map: Haligtree
+    name: Beastman
+    map: Farum Azula
     player_spawn:
       x: 0.0
       y: 0.0

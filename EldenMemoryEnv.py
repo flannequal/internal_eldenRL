@@ -1,7 +1,7 @@
-import gym
+import gymnasium as gym
 import time
 import numpy as np
-from gym import spaces
+from gymnasium import spaces
 
 from MemoryClient import MemoryClient
 from EldenRewardMemory import EldenRewardMemory
