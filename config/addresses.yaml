@@ -6,8 +6,8 @@ bases_static:
   FieldArea: 0x3D691D8
   DamageCtrl: 0x3D66378
   TeleportFunction: 0x1337040
-  WarpFunction: 0xDEADBEEF 
-  WarpLocation: 0xDEADBEEF
+  WarpFunction: 0x3E213247     
+  WarpLocation: 0x3E213247  #data location of all locations (sites of grace) to warp to
 
 addresses:
   PlayerHP:
