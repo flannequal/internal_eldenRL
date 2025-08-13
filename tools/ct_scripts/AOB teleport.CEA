@@ -1,0 +1,17 @@
+[ENABLE]
+//By JackyDima
+alloc(TPData, 32, "eldenring.exe")
+registerSymbol(TPData)
+
+
+TPData:
+
+dd (float)0 // X +0
+dd (float)0 // Z +4
+dd (float)0 // Y +8
+dd 3E213247 // BonfireID +C  (default First Step)
+
+ 
+[DISABLE]
+dealloc(TPData)
+unregisterSymbol(TPData)

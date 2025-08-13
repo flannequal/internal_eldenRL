@@ -10,11 +10,11 @@ class EldenRewardMemory:
 
     def __init__(self, config):
         self.GAME_MODE = config.get("GAME_MODE", "PVE")
-        self.prev_hp = 1.0
-        self.curr_hp = 1.0
-        self.curr_stam = 1.0
-        self.curr_boss_hp = 1.0
-        self.prev_boss_hp = 1.0
+        self.prev_hp = float('nan')
+        self.curr_hp = float('nan')
+        self.curr_stam = float('nan')
+        self.curr_boss_hp = float('nan')
+        self.prev_boss_hp = float('nan')
         self.time_since_dmg_taken = time.time()
         self.time_since_boss_dmg = time.time()
         self.time_since_pvp_damaged = time.time()
@@ -55,20 +55,20 @@ class EldenRewardMemory:
 
         # 3) Boss rewards (PVE only)
         boss_dmg_reward = 0
-        percent_through_fight_reward = 0
+        progress_reward = 0
         if self.GAME_MODE == "PVE":
             if self.boss_death:
                 boss_dmg_reward = 420
             else:
                 # Reward strictly on boss HP decrease
                 if self.curr_boss_hp < self.prev_boss_hp - 1e-6:
-                    boss_dmg_reward = 69
+                    boss_dmg_reward = 100  # Increased reward for landing a hit
                     self.time_since_boss_dmg = time.time()
-                elif time.time() - self.time_since_boss_dmg > 5:
-                    boss_dmg_reward = -25
-            # Encourage progress through the fight
-            if self.curr_boss_hp < 0.97:
-                percent_through_fight_reward = self.curr_boss_hp * 15
+                elif time.time() - self.time_since_boss_dmg > 8: # Increased penalty timer
+                    boss_dmg_reward = -50
+            # Encourage progress through the fight with a more significant reward
+            if self.curr_boss_hp < 0.98:
+                progress_reward = (1.0 - self.curr_boss_hp) * 150
 
         # 4) PvP rewards
         pvp_reward = 0
@@ -81,7 +81,7 @@ class EldenRewardMemory:
 
         # 5) Total
         if self.GAME_MODE == "PVE":
-            total_reward = hp_reward + boss_dmg_reward + time_since_taken_dmg_reward + percent_through_fight_reward
+            total_reward = hp_reward + boss_dmg_reward + time_since_taken_dmg_reward + progress_reward
         else:
             total_reward = hp_reward + time_since_taken_dmg_reward + pvp_reward
 

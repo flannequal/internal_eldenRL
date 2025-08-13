@@ -20,10 +20,10 @@ def cmd_validate(root_dir: str) -> int:
 
     root_dir = root_dir or os.path.join('config')
     paths = {
-        'arenas': [os.path.join(root_dir, 'arenas.yaml'), os.path.join(root_dir, 'arenas.sample.yaml')],
-        'coords': [os.path.join(root_dir, 'coordinates.yaml'), os.path.join(root_dir, 'coordinates.sample.yaml')],
-        'bonfires': [os.path.join(root_dir, 'bonfires.yaml'), os.path.join(root_dir, 'bonfires.sample.yaml')],
-        'addresses': [os.path.join(root_dir, 'addresses.yaml'), os.path.join(root_dir, 'addresses.sample.yaml')],
+        'arenas': [os.path.join(root_dir, 'arenas.yaml')],
+        'coords': [os.path.join(root_dir, 'coordinates.yaml')],
+        'bonfires': [os.path.join(root_dir, 'bonfires.yaml')],
+        'addresses': [os.path.join(root_dir, 'addresses.yaml')],
     }
 
     loaded: Dict[str, Dict[str, Any]] = {}

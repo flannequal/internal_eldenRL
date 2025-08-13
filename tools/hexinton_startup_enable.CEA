@@ -1,0 +1,1109 @@
+{ Game   : Elden Ring
+  Version:
+  Date   : 2022-01-22
+  Author : Team Hexinton
+
+  This script does blah blah blah
+}
+
+[ENABLE]
+LuaCall(function cycleFullCompact(sender,force) local state = not(compactmenuitem.Caption == 'Compact View Mode'); if force~=nil then state = not force end; compactmenuitem.Caption = state and 'Compact View Mode' or 'Full View Mode'; getMainForm().Splitter1.Visible = state; getMainForm().Panel4.Visible    = state; getMainForm().Panel5.Visible    = state; end; function addCompactMenu() if compactmenualreadyexists then return end; local parent = getMainForm().Menu.Items; compactmenuitem = createMenuItem(parent); parent.add(compactmenuitem); compactmenuitem.Caption = 'Compact View Mode'; compactmenuitem.OnClick = cycleFullCompact; compactmenualreadyexists = 'yes'; end; addCompactMenu(); cycleFullCompact(nil,true))
+//code from here to '[DISABLE]' will be used to enable the cheat
+{$lua}
+if getProcessIDFromProcessName('EasyAntiCheat_EOS.exe') then
+    messageDialog('EAC is not disabled.If you need Infos on how to do this please look at our Servers or Websites Tutorials.',1)
+    error('EAC is not disabled.')
+end
+
+if not (openProcess("eldenring.exe") and readInteger("eldenring.exe")) and openProcess("start_protected_game.exe") and readInteger("start_protected_game.exe") then
+    registerSymbol("eldenring.exe","start_protected_game.exe",true)
+end
+
+if not getOpenedProcessID() then
+    messageDialog('Game is not running.',1)
+    error('Game is not running')
+end
+
+function disableMemrec(memrec, delay)
+    local memrecType = type(memrec)
+    if memrecType == "userdata" then
+        -- noop, we assume it is already MemoryRecord
+    elseif memrecType == "string" then
+        memrec = getAddressList().getMemoryRecordByDescription(memrec)
+    elseif memrecType == "number" then
+        memrec = getAddressList().getMemoryRecordByID(memrec)
+    end
+    if not memrec then return end
+    local t = createTimer(nil)
+    delay = delay or 100
+    local delayType = type(delay)
+    if delayType == "string" then
+        t.interval = 100
+        t.onTimer = function(t)
+            if readBytes(delay, 1) == 1 then
+                t.destroy()
+                memrec.active = false
+            end
+        end
+    elseif delayType == "number" then
+        -- minimum delay is 0.1 seconds
+        t.interval = math.max(delay, 100)
+        t.onTimer = function(t)
+            t.destroy()
+            memrec.active = false
+        end
+    elseif delayType == "function" then
+        t.interval = 100
+        t.onTimer = function(t)
+            if delay() then
+                t.destroy()
+                memrec.active = false
+            end
+        end
+    end
+end
+
+local function GetEXEFilePath(addr,pid)
+    local mods=enumModules(pid)
+    for k,v in pairs(mods) do
+        if v.Address==addr then
+           return v.PathToFile
+        end
+    end
+end
+local function GetVersionString(vernum)
+    return string.format("%u.%u.%u.%u",(vernum>>48)&65535,(vernum>>32)&65535,(vernum>>16)&65535,vernum&65535)
+end
+
+local FilePath=GetEXEFilePath(getAddressSafe("eldenring.exe"),getOpenedProcessID())
+if FilePath then
+    local vernum=getFileVersion(FilePath)
+    local tablever=0x2000600000000 -- 0x10004000x0000
+    if not vernum then vernum=0 end
+    if vernum~=tablever then
+       messageDialog((vernum<tablever and "The game is outdated." or "This table is outdated. You can always get the latest table in our discord server!")
+       .."\nYour game version is "..GetVersionString(vernum)..".\nThis table is for "..GetVersionString(tablever)..".".."\nYou can still use the table, but some features may not work.",0)
+    end
+else
+    messageDialog("wrong process or eac isn't disabled",0)
+    error("wrong process or eac isn't disabled")
+end
+
+
+package.preload["ce.scroll_to"] = function(...)
+  local _m = {}
+
+  -- Recursively activates given memrec and its parents
+  local function recursive_activate(memrec)
+    if(not memrec) then return end
+    recursive_activate(memrec.Parent)
+    memrec.Active = true
+  end
+
+  -- Returns data that will be used for a search
+  local function refresh_search_list()
+    local addr_list = getAddressList()
+    local list = createStringlist()
+    list.beginUpdate()
+    for i = 0, addr_list.Count - 1 do
+      list.add(addr_list[i].Description)
+    end
+    list.endUpdate()
+    return list
+  end
+
+if getProcessIDFromProcessName('EasyAntiCheat_EOS.exe') then
+    error('')
+end
+  -- Makes given memrec visible on screen
+  -- @param memrec MemoryRecord
+  function _m:scroll_to_memrec(memrec)
+    if(not memrec) then return end
+    recursive_activate(memrec.Parent)
+    -- focus AddressList's TTreeviewWithScroll to set keyboard focus for the selected memrec
+    getAddressList().Control[0].setFocus()
+    getAddressList().setSelectedRecord(memrec)
+  end
+
+  -- Shows search dialog and tries to find memrec for typed text
+  -- @return MemoryRecord | nil
+  function _m:find_memrec()
+    local addr_list = getAddressList()
+
+    if not self.description_list or self.description_list.Count ~= addr_list.Count then
+      self.description_list = refresh_search_list()
+    end
+
+    local i, text = showSelectionList(
+      "Scroll to memory record",
+      "Enter ID or description\n<Enter> selects the first element in the list",
+      self.description_list,
+      true
+    )
+    -- one of the list elements was selected
+    if i >= 0 then return addr_list[i] end
+    -- no text was typed
+    if text == '' then return end
+    local memrec
+    -- check if numeric ID was typed
+    local id = tonumber(text)
+    if(id) then
+      memrec = addr_list.getMemoryRecordByID(id)
+      if memrec then return memrec end
+    end
+    -- check if typed text is an exact description of a memrec
+    memrec = addr_list.getMemoryRecordByDescription(text)
+    if memrec then return memrec end
+    -- fallback to full list search by a partial match
+    i = self:_dumb_search(text)
+    if i then return addr_list[i] end
+  end
+
+  -- horrible, horrible search
+  -- returns index of the first memrec with description containing given text
+  -- @return Integer | nil
+  function _m:_dumb_search(text)
+    text = string.lower(text)
+    for i = 0, self.description_list.Count - 1 do
+      -- plain "find substring" operation
+      if string.find(string.lower(self.description_list[i]), text, 1, true) then
+        return i
+      end
+    end
+  end
+
+
+  -- add new menu item
+  -- if can't find Edit menu item add to the main menu itself
+  local parent = getMainForm().Edit3 or getMainForm().Menu.Items
+  local new_item = createMenuItem(parent)
+  new_item.Caption = '&Scroll to'
+  new_item.Shortcut = "Ctrl+F"
+  new_item.OnClick = function() _m:scroll_to_memrec(_m:find_memrec()) end
+  parent.add(new_item)
+
+  return _m
+end
+
+require("ce.scroll_to")
+
+-- Show text in a separate window.
+-- Examples:
+--   showText("Title", "Some text")
+--   showText([[Multiline text]])
+-- @param caption, String, optional title for the window
+-- @param text, String, text to show
+-- ametalon, 2020-07-17
+function showText(caption, text)
+  if not text then
+    text = caption
+    caption = ""
+  end
+  local f = createForm(false)
+  f.Name = 'ShowTextForm'
+  f.DoNotSaveInTable = true
+  f.AutoSize = true
+  f.BorderStyle = bsSizeable
+  local m = createMemo(f)
+  m.Name = 'TextMemo'
+  m.BorderStyle = bsNone
+  m.ReadOnly = true
+  m.ScrollBars = ssAutoBoth
+  m.Constraints.MinWidth = 400
+  m.Constraints.MinHeight = 400
+  m.Align = alClient
+  m.AnchorSideRight.Side = asrBottom
+  m.AnchorSideBottom.Side = asrBottom
+
+  f.Caption = caption
+  f.TextMemo.Lines.setText(text)
+  f.centerScreen()
+  f.show()
+  f.bringToFront()
+  return f
+end
+
+if getProcessIDFromProcessName('EasyAntiCheat_EOS.exe') then
+    error('')
+end
+
+local aobList = {
+    {name = "WorldChrMan", aob = "48 8B 05 ?? ?? ?? ?? 48 85 C0 74 0F 48 39 88", offset = 3, additional = 7},
+    {name = "GameDataMan", aob = "48 8B 05 ?? ?? ?? ?? 48 85 C0 74 05 48 8B 40 58 C3 C3", offset = 3, additional = 7},
+    {name = "NetManImp", aob = "48 8B 05 ???????? 80 78 ?? 00 ???? 48 8D 9F ???????? 48 8B 03", offset = 3, additional = 7},
+    {name = "CSRegulationManagerImp", aob = "48 8B 0D ? ? ? ? 48 85 C9 74 0B 4C 8B C0 48 8B D7", offset = 3, additional = 7},
+    {name = "PARAM", aob = "48 8B 0D ?? ?? ?? ?? 48 85 C9 0F 84 ?? ?? ?? ?? 45 33 C0 BA 8E 00 00 00", offset = 3, additional = 7},
+    {name = "EventFlagMan", aob = "48 8B 3D ???????? 48 85 FF ???? 32 C0 E9", offset = 3, additional = 7},
+    {name = "FieldArea", aob = "48 8B 0D ?? ?? ?? ?? 48 ?? ?? ?? 44 0F B6 61 ?? E8 ?? ?? ?? ?? 48 63 87 ?? ?? ?? ?? 48 ?? ?? ?? 48 85 C0", offset = 3, additional = 7},
+    {name = "MapItemMan", aob = "48 8B 0D ???????? C7 44 24 50 FF FF FF FF C7 45 A0 FF FF FF FF 48 85 C9 75 2E", offset = 3, additional = 7},
+    {name = "CSFlipper", aob = "48 8B 0D ???????? 80 BB D7 00 00 00 00 0F 84 CE 00 00 00 48 85 C9 75 2E", offset = 3, additional = 7},
+    {name = "GameMan", aob = "48 8B 05 ???????? 80 B8 ???????? 0D 0F94 C0 C3", offset = 3, additional = 7},
+    {name = "CSLuaEventManager", aob = "48 8B 05 ?? ?? ?? ?? 48 85 C0 74 ?? 41 BE 01 00 00 00 44 89 75", offset = 3, additional = 7},
+    {name = "hudngaddr", aob = "8B 7B 64 48 85 C9", offset = -4, additional = 0},
+    {name = "DamageCtrl", aob = "48 8B 05 ???????? 49 8B D9 49 8B F8 48 8B F2 48 85 C0 75 2E", offset = 3, additional = 7},
+    {name = "MapLight", aob = "48 8B FA 0F 28 05 ?? ?? ?? ?? 48 8B D9 66 0F 7F 45 C7", offset = 6, additional = 10},
+    {name = "CHR_DBG_FLAGS", aob = "80 3D ?? ?? ?? ?? 00 0F 85 ?? ?? ?? ?? 32 C0 48", offset = 2, additional = 7},
+    {name = "CHR_DBG", aob = "48 8B 05 ?? ?? ?? ?? 41 83 FF 02 ?? ?? 48 85 C0", offset = 3, additional = 7},
+    {name = "EmkSystem", aob = "48 8B 05 ???????? 4C 8B 74 24 ?? 48 8B 7C 24 ?? 48 8B 74 24 ?? 48", offset = 3, additional = 7},
+    {name = "MsbPointMan", aob = "48 8B 0D ???????? 41 B0 01 BA 23000000 E8 ???????? 84 C0", offset = 3, additional = 7},
+    {name = "WorldMapMan", aob = "48 8B 0D ???????? E8 ???????? 0FB6 5D 90 84 C0 41 0F44 DD", offset = 3, additional = 7},
+    {name = "WorldHitMan", aob = "48 8B 05 ?? ?? ?? ?? 48 8D 4C 24 ?? 4889 4c 24 ?? 0F 10 44 24 70", offset = 3, additional = 7},
+    {name = "WorldNaviMeshManager", aob = "48 8B 0D ?? ?? ?? ?? 0F B6 84 24 ?? ?? ?? ?? 4C 8D 8C 24 ?? ?? ?? ?? F3 0F 10 05", offset = 3, additional = 7},
+    {name = "WorldGeomMan", aob = "4C 39 3D ?? ?? ?? ?? 0F 84 ?? ?? ?? ?? 4C 89 60 ?? 41 83 CC FF 4C 89 70 ?? 0F 29 ?? ?? 44 0F 29 ?? ?? F3", offset = 3, additional = 7},
+    {name = "WorldTalkMan", aob = "48 8B 05 ???????? F3 0F 10 88 ???????? 0F 57 C0 48 8B 47", offset = 3, additional = 7},
+    {name = "WorldWaypointMan", aob = "48 8B 35 ???????? 49 8B 06 48 8B FE 48 8B D8", offset = 3, additional = 7},
+    {name = "WorldObjActMan", aob = "48 8B 0D ???????? E8 ???????? 48 8B 5F ?? 48 89 5F ?? 48 8B 6C 24 ??", offset = 3, additional = 7},
+    {name = "WorldSfxMan", aob = "48 8B 05 ???????? 48 8D 4D 98 48 89 4C 24 60", offset = 3, additional = 7},
+    {name = "WorldSoundMan", aob = "48 8B 05 ???????? 48 8D 4D 30 48 89 4C 24 38 0F 10", offset = 3, additional = 7},
+    {name = "WorldAiMan", aob = "48 8B 0D ???????? 4C 8D 44 24 38 B2 07 E8 ???????? C7", offset = 3, additional = 7},
+    {name = "WorldAreaWeather", aob = "48 8B 15 ???????? 32 C0 48 85 D2 ???? 8B 82", offset = 3, additional = 7},
+    {name = "WorldAreaTime", aob = "48 8B 05 ???????? 48 85 C0 ???? C6 40 ?? 01 48 8B 05", offset = 3, additional = 7},
+    {name = "ChrSpawnCmpAddr", aob = "80 3D xx xx xx xx 00 0F 28 F0 74 xx 0F 57 C9", offset = 2, additional = 7},
+    {name = "Bullet_Man", aob = "48 8B 0D xx xx xx xx E8 xx xx xx xx 48 8D 44 24 xx 48  89  44  24 xx 48 89 7C 24 xx C7 44 24 xx x xx xx xx 48", offset = 3, additional = 7},
+    {name = "CsDlc", aob = "48 83 3D ?? ?? ?? ?? 00 75 27 48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 4C 8B C8 4C 8D 05 ?? ?? ?? ?? BA B4 00 00 00 48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? C6 40 42 01 BA 01 00 00 00 41 B8 F4 01 00 00 48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? EB 02", offset = 3, additional = 8}
+}
+
+local failedScans = {}
+
+for _, entry in ipairs(aobList) do
+    local success = autoAssemble(string.format([[
+        aobscanmodule(Finder,eldenring.exe,%s)
+        registersymbol(Finder)
+    ]], entry.aob))
+
+    if success then
+        local addr = getAddress("Finder")
+        addr = addr + readInteger(addr + entry.offset) + entry.additional
+        unregisterSymbol("Finder")
+        registerSymbol(entry.name, addr, true)
+    else
+        table.insert(failedScans, entry.name)
+    end
+end
+
+if #failedScans > 0 then
+    print("Failed to scan the following AOBs:")
+    for _, name in ipairs(failedScans) do
+        print(name)
+    end
+end
+
+--Utility
+-- Main script to define functions and state storage
+
+-- Dictionary to store previous states for different IDs
+previousStatesDict = {}
+
+-- Function to perform DFS and set binary entries to a specified value
+function dfsSetBinaryToValue(entry, entryID, value)
+    -- Initialize the previous states table for this entry ID if it doesn't exist
+    if previousStatesDict[entryID] == nil then
+        previousStatesDict[entryID] = {}
+    end
+
+    -- Check if the entry is a binary type
+    if entry.Type == vtBinary then
+        -- Save the previous state using the entry ID as the key
+        previousStatesDict[entryID][entry.ID] = entry.Value
+        -- Set the binary entry to the specified value
+        entry.Value = value
+    end
+
+    -- Iterate through the children of the entry
+    for i = 0, entry.Count - 1 do
+        local child = entry.Child[i]
+        dfsSetBinaryToValue(child, entryID, value)
+    end
+end
+
+-- Function to restore binary entries to their previous states
+function restoreBinaryEntries(entry, entryID)
+    -- Check if the entry is a binary type and has a saved previous state
+    if entry.Type == vtBinary and previousStatesDict[entryID] ~= nil and previousStatesDict[entryID][entry.ID] ~= nil then
+        -- Restore the previous state
+        entry.Value = previousStatesDict[entryID][entry.ID]
+    end
+
+    -- Iterate through the children of the entry
+    for i = 0, entry.Count - 1 do
+        local child = entry.Child[i]
+        restoreBinaryEntries(child, entryID)
+    end
+end
+
+-- Function to unlock entries by setting binary entries to 1
+function unlockEntries(entryID)
+    -- Get the main address list
+    local addressList = getAddressList()
+
+    -- Find the entry with the specific ID
+    local targetEntry = nil
+    for i = 0, addressList.Count - 1 do
+        local entry = addressList[i]
+        if entry.ID == entryID then
+            targetEntry = entry
+            break
+        end
+    end
+
+    -- If the target entry is found, perform DFS on its children
+    if targetEntry then
+        dfsSetBinaryToValue(targetEntry, entryID, 1)
+    else
+        print("Entry with ID " .. entryID .. " not found.")
+    end
+end
+
+-- Function to lock entries by setting binary entries to 0
+function lockEntries(entryID)
+    -- Get the main address list
+    local addressList = getAddressList()
+
+    -- Find the entry with the specific ID
+    local targetEntry = nil
+    for i = 0, addressList.Count - 1 do
+        local entry = addressList[i]
+        if entry.ID == entryID then
+            targetEntry = entry
+            break
+        end
+    end
+
+    -- If the target entry is found, perform DFS on its children
+    if targetEntry then
+        dfsSetBinaryToValue(targetEntry, entryID, 0)
+    else
+        print("Entry with ID " .. entryID .. " not found.")
+    end
+end
+
+-- Function to restore entries to their previous states
+function restoreEntries(entryID)
+    -- Get the main address list
+    local addressList = getAddressList()
+
+    -- Find the entry with the specific ID
+    local targetEntry = nil
+    for i = 0, addressList.Count - 1 do
+        local entry = addressList[i]
+        if entry.ID == entryID then
+            targetEntry = entry
+            break
+        end
+    end
+
+    -- If the target entry is found, restore its children's states
+    if targetEntry then
+        restoreBinaryEntries(targetEntry, entryID)
+    else
+        print("Entry with ID " .. entryID .. " not found.")
+    end
+
+    -- Clear the previous states table for this entry ID
+    previousStatesDict[entryID] = nil
+end
+{$asm}
+
+define(LocalPlayerOffset,10EF8)
+registersymbol(LocalPlayerOffset)
+
+define(CHRSP,1E640)
+registersymbol(CHRSP)
+/// Thank big daddy Zodiacsl125 for this part
+aobScanModule(InventoryAccessor,eldenring.exe,44 8B 61 1C 41 8B FC C1 EF 07 40 80 E7 01 41 C1 EC 08 41 80 E4 01 48 8B 0D)
+aobScanModule(AddItemFunc,eldenring.exe,40 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 70 FF FF FF 48 81 EC 90 01 00 00 48 C7 45 C8 FE FF FF FF 48 89 9C 24 D8 01 00 00 48 8B 05)
+alloc(itembuffer,4096,eldenring.exe)
+label(itemgib)
+label(itemgib1)
+label(exit)
+registersymbol(itembuffer)
+registersymbol(itemgib)
+itembuffer:
+dq 0,0,0,0,F00006AE00000001,0000000000000001,FFFFFFFFFFFFFFFF,FFFFFFFF00000000,FFFFFFFFFFFFFFFF,FFFFFFFF00000000
+itemgib:
+mov rdx,rcx
+cmp rdx,10000
+jge itemgib1
+lea rdx,[itembuffer+20]
+itemgib1:
+sub rsp,28
+xor r9,r9
+lea r8,[itembuffer]
+mov rax,InventoryAccessor+19
+mov rcx,InventoryAccessor+1D
+mov eax,[rax]
+cdqe
+add rcx,rax
+mov rcx,[rcx]
+cmp rcx,10000
+jl exit
+call AddItemFunc
+exit:
+add rsp,28
+ret
+{$lua}
+ConvertTypeIndexTable = {
+0,
+1,
+2,
+4,
+8,
+}
+ConvertAshofWarTable = {
+-1,
+2147543848,
+2147548648,
+2147523748,
+2147513748,
+2147548848,
+2147505748,
+2147506048,
+2147494448,
+2147563748,
+2147504048,
+2147549048,
+2147505448,
+2147505548,
+2147514148,
+2147494148,
+2147506348,
+2147544348,
+2147543648,
+2147494848,
+2147504848,
+2147524048,
+2147553648,
+2147504348,
+2147534148,
+2147505048,
+2147495248,
+2147503648,
+2147503948,
+2147504948,
+2147514348,
+2147534348,
+2147543948,
+2147504548,
+2147534248,
+2147534548,
+2147533748,
+2147553848,
+2147503848,
+2147493748,
+2147533948,
+2147504148,
+2147534048,
+2147505348,
+2147493648,
+2147495448,
+2147523848,
+2147514548,
+2147513848,
+2147506148,
+2147493848,
+2147495548,
+2147506448,
+2147504448,
+2147494948,
+2147563648,
+2147524248,
+2147563848,
+2147494548,
+2147543748,
+2147503748,
+2147544048,
+2147505848,
+2147544248,
+2147544148,
+2147513648,
+2147514448,
+2147524148,
+2147506248,
+2147493948,
+2147494748,
+2147495648,
+2147495148,
+2147494348,
+2147494248,
+2147495848,
+2147504648,
+2147533848,
+2147514248,
+2147495948,
+2147496048,
+2147514648,
+2147523648,
+2147505248,
+2147548948,
+2147495048,
+2147505648,
+2147553748,
+2147548748,
+2147534448,
+2147568648,
+2147494648,
+}
+ItemCache = {}
+function CacheInit(typeindex)
+      ItemCache[typeindex]={}
+      local memrec = getAddressList().getMemoryRecordByID(22032400+typeindex)
+      for i=0,memrec.DropDownCount-1 do
+          local tinsert = {
+          ID=memrec.DropDownValue[i],
+          Name=memrec.DropDownDescription[i],
+          }
+          table.insert(ItemCache[typeindex],tinsert)
+      end
+end
+
+function BoxShow(typeindex)
+if typeindex == 0 then
+ItemGib.CEComboBox2.Visible=true
+ItemGib.CEComboBox3.Visible=true
+ItemGib.CELabel5.Visible=true
+ItemGib.CELabel6.Visible=true
+else
+ItemGib.CEComboBox2.Visible=false
+ItemGib.CEComboBox3.Visible=false
+ItemGib.CELabel5.Visible=false
+ItemGib.CELabel6.Visible=false
+end
+end
+
+function listUpdate(typeindex)
+BoxShow(typeindex)
+ItemGib.CEListView1.beginUpdate()
+local items = ItemGib.CEListView1.Items
+items.Clear()
+for i,k in ipairs(ItemCache[typeindex]) do
+local item = items.Add()
+item.Caption = k.ID
+item.SubItems.text = k.Name
+end
+ItemGib.CEListView1.endUpdate()
+
+ItemGib.CEComboBox2.ItemIndex=0
+ItemGib.CEComboBox3.ItemIndex=0
+ItemGib.IDText.Text=ItemGib.CEListView1.Items[0].Caption -- id
+end
+--GUI
+function ItemGib_CEPanel1Click(sender) -- find
+local typeindex = ItemGib.CEComboBox1.ItemIndex
+if not ItemCache[typeindex] then
+   CacheInit(typeindex)
+end
+
+ItemGib.CEListView1.beginUpdate()
+local text = ItemGib.CEEdit1.Text
+local items = ItemGib.CEListView1.Items
+items.Clear()
+for i,k in ipairs(ItemCache[typeindex]) do
+if string.find(k.Name:lower(),text:lower()) or (string.sub(k.ID,1,text:len())==text) then
+local item = items.Add()
+item.Caption = k.ID
+item.SubItems.text = k.Name
+end
+end
+ItemGib.CEListView1.endUpdate()
+end
+
+function ItemGib_CEListView1SelectItem(sender, listitem, selected)
+  if selected then
+     ItemGib.IDText.Text=listitem.Caption
+  end
+end
+
+function ItemGib_CEButton1Click(sender) -- init weapon
+local typeindex = 0
+ItemGib.CEComboBox1.ItemIndex = typeindex
+if not ItemCache[typeindex] then
+   CacheInit(typeindex)
+end
+listUpdate(typeindex)
+end
+
+function ItemGib_CEButton2Click(sender)
+local typeindex = 1
+ItemGib.CEComboBox1.ItemIndex = typeindex
+if not ItemCache[typeindex] then
+   CacheInit(typeindex)
+end
+listUpdate(typeindex)
+end
+
+function ItemGib_CEButton4Click(sender)
+local typeindex = 2
+ItemGib.CEComboBox1.ItemIndex = typeindex
+if not ItemCache[typeindex] then
+   CacheInit(typeindex)
+end
+listUpdate(typeindex)
+end
+
+function ItemGib_CEButton3Click(sender)
+local typeindex = 3
+ItemGib.CEComboBox1.ItemIndex = typeindex
+if not ItemCache[typeindex] then
+   CacheInit(typeindex)
+end
+listUpdate(typeindex)
+end
+
+function ItemGib_CEButton5Click(sender)
+local typeindex = 4
+ItemGib.CEComboBox1.ItemIndex = typeindex
+if not ItemCache[typeindex] then
+   CacheInit(typeindex)
+end
+listUpdate(typeindex)
+end
+
+function ItemGib_CEComboBox1Change(sender)
+local typeindex = ItemGib.CEComboBox1.ItemIndex
+BoxShow(typeindex)
+end
+
+function ItemGib_CEPanel3Click(sender) -- Gib
+local items = ItemGib.CEListView1.Items
+local selected = {}
+for i=0,items.Count-1 do
+  if items[i].Selected then table.insert(selected, i) end
+end
+
+local typeID = ConvertTypeIndexTable[ItemGib.CEComboBox1.ItemIndex+1]
+if #selected > 1 then --Mass
+for i,k in ipairs(selected) do
+    local itemID = tonumber(items[k].Caption)
+    itemID = (itemID | (typeID<<28)) + ItemGib.CEComboBox3.ItemIndex
+    if readInteger("itembuffer") then
+      writeInteger("itembuffer+24",itemID)
+      writeInteger("itembuffer+28",tonumber(ItemGib.QuantityText.Text))
+      writeInteger("itembuffer+30",ConvertAshofWarTable[ItemGib.CEComboBox2.ItemIndex+1])
+      executeCode("itemgib",0)
+   end
+end
+else--single
+local itemID = tonumber(ItemGib.IDText.Text)
+if itemID and typeID then
+   itemID = (itemID | (typeID<<28)) + ItemGib.CEComboBox3.ItemIndex
+   if readInteger("itembuffer") then
+      writeInteger("itembuffer+24",itemID)
+      writeInteger("itembuffer+28",tonumber(ItemGib.QuantityText.Text))
+      writeInteger("itembuffer+30",ConvertAshofWarTable[ItemGib.CEComboBox2.ItemIndex+1])
+      executeCode("itemgib",0)
+   end
+end
+end
+end
+
+function ItemGib_CEPanel4Click(sender)
+ShellExecute("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+end
+
+function ItemGib_FormClose(sender)
+ItemGib.CEListView1.beginUpdate()
+ItemGib.CEListView1.Items.Clear()
+ItemGib.CEListView1.endUpdate()
+return caHide --Possible options: caHide, caFree, caMinimize, caNone
+end
+
+
+local darkformtable = {
+{0,0x00202020},
+{1,0x20000000},
+{2,0x20000000},
+{3,0x20000000},
+{4,0x20000000},
+{5,0x202020},
+{6,0x202020},
+{7,0xFFFFFF},
+{8,0x202020},
+{9,0x1FFFFFFF},
+{10,0x202020},
+{11,0x1FFFFFFF},
+{12,0x1FFFFFFF},
+{13,0x1FFFFFFF},
+{14,0x1FFFFFFF},
+{15,0x1FFFFFFF},
+{16,0x202020},
+{17,0x20000000},
+{18,0x1FFFFFFF},
+{19,0xFFFFFFFF80000001},
+{20,0x1FFFFFFF},
+{21,0xFFFFFFFF80000001},
+{22,0x202020},
+{23,0x1FFFFFFF},
+{24,0x646464},
+}
+
+local lightformtable = {
+{0,0x20000000},
+{1,0x20000000},
+{2,0x20000000},
+{3,0x20000000},
+{4,0x20000000},
+{5,0x20000000},
+{6,0xFFFFFFFF80000005},
+{7,0xFFFFFF},
+{8,0x20000000},
+{9,0x1FFFFFFF},
+{10,0x20000000},
+{11,0x1FFFFFFF},
+{12,0x1FFFFFFF},
+{13,0x1FFFFFFF},
+{14,0x1FFFFFFF},
+{15,0x1FFFFFFF},
+{16,0x20000000},
+{17,0x20000000},
+{18,0x1FFFFFFF},
+{19,0x20000000},
+{20,0x1FFFFFFF},
+{21,0x20000000},
+{22,0xFFFFFFFF80000005},
+{23,0x1FFFFFFF},
+{24,0xFFFFFFFF80000005},
+}
+
+function ItemGib_FormShow(sender)
+if darkMode() then -- mode
+   ItemGib.Color = 0x00252525
+   for i,k in ipairs(darkformtable) do
+    ItemGib.Component[k[1]].Color=k[2]
+   end
+   for i = 0, ItemGib.ComponentCount-1 do
+    if ItemGib.Component[i].Font.Color then
+       ItemGib.Component[i].Font.Color = 0x00FFFFFF
+    end
+   end
+else
+   ItemGib.Color = 0x00FFFFFF
+   for i,k in ipairs(lightformtable) do
+    ItemGib.Component[k[1]].Color=k[2]
+   end
+   for i = 0, ItemGib.ComponentCount-1 do
+    if ItemGib.Component[i].Font.Color then
+       ItemGib.Component[i].Font.Color = 0x20000000
+    end
+   end
+end
+
+ItemGib.CEEdit1.Text=""
+ItemGib.QuantityText.Text=1
+
+local typeindex = 2 -- talisman default page
+ItemGib.CEComboBox1.ItemIndex = typeindex
+if not ItemCache[typeindex] then
+   CacheInit(typeindex)
+end
+listUpdate(typeindex)
+end
+function GetParamBasePtr()
+    local exebase=getAddress("eldenring.exe")
+    local exesize=getModuleSize("eldenring.exe")
+    local ms=createMemScan()
+    ms.setOnlyOneResult(true)
+    local scanpattern="48 8B 0D ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 85 C0 0F 84 ?? ?? ?? ?? 48 8B 80 80 00 00 00 48 8B 90 80 00 00 00"
+    ms.firstScan(soExactValue,vtByteArray,nil,scanpattern,nil,exebase,exebase+exesize,'+X',fsmNotAligned,'1',true,false,false,false)
+    ms.waitTillDone()
+    local foundaddr=ms.getOnlyResult()
+    ms.destroy()
+    return foundaddr+7+readInteger(foundaddr+3,true)
+end
+
+function getValue(t,k,def)
+    local v=t[k]
+    if v then
+       return v
+    end
+    return def
+end
+
+function inverseTable(t)
+    local r={}
+    for k,v in pairs(t) do
+        r[v]=k
+    end
+    return r
+end
+
+ParamBase=readQword(GetParamBasePtr())
+
+function GetParamTable(Index)--0:weapon 1:armor 2:talisman 3:goods 10:bullet 14:magic
+    local hdr=readQword(ParamBase+Index*72+0x88)
+    if not hdr then return nil end
+    --ppv4
+    if Index==10 then
+    return readQword(readQword(hdr+0x80)+0x80),"BulletParam"
+    elseif Index==14 then
+    return readQword(readQword(hdr+0x80)+0x80),"MagicParam"
+    end
+    --end
+    return readQword(readQword(hdr+0x80)+0x80),readString(readQword(hdr+24),128,true)
+end
+
+function GetParamStructSize(TableBase)
+    return readInteger(TableBase+0x48+24)-readInteger(TableBase+0x48)
+end
+
+function LoadParamTable(TableBase)
+   if not TableBase then return nil end
+   local n=readSmallInteger(TableBase+10)
+   if not n then return nil end
+   local tbl={}
+   for i=0,n-1 do
+       tbl[readInteger(TableBase+64+24*i)]=TableBase+readInteger(TableBase+64+24*i+8)
+   end
+   return tbl
+end
+
+function ParamIdToAddress(TableBase,ID)
+   local n=readSmallInteger(TableBase+10)
+   for i=0,n-1 do
+       local d=readInteger(TableBase+64+24*i)
+       if d==ID then
+          return TableBase+readInteger(TableBase+64+24*i+8)
+       end
+   end
+   return 0
+end
+
+function ParamAddressToId(TableBase,Address)
+   local n=readSmallInteger(TableBase+10)
+   for i=0,n-1 do
+       local addr=TableBase+readInteger(TableBase+64+24*i+8)
+       if addr==Address then
+          return readInteger(TableBase+64+24*i)
+       end
+   end
+   return -1
+end
+
+function CopyListView(lv)
+    local i
+    local s=""
+    for i=0,lv.Items.Count-1 do
+        if lv.Items[i].Selected then
+           s=s..lv.Items[i].getCaption()
+           for j=0,lv.Items[i].SubItems.Count-1 do
+               s=s..'\t'..lv.Items[i].SubItems[j]
+           end
+           if i+1<lv.Items.Count then
+              s=s.."\r\n"
+           end
+        end
+    end
+    if s and s:len()>0 then
+       writeToClipboard(s)
+    end
+end
+
+local addrlist=getAddressList()
+ParamID=allocateMemory(4096)
+
+WeaponTableBase,WeaponTableName=GetParamTable(0)
+WeaponTableCache=LoadParamTable(WeaponTableBase)
+writeInteger(ParamID+4*0,1000000)
+addrlist.getMemoryRecordByID(601249).Address=string.format("%x",WeaponTableBase)
+addrlist.getMemoryRecordByID(601247).Address=string.format("%x",ParamID+4*0)
+local weaponaddr=addrlist.getMemoryRecordByID(601251)
+
+
+ArmorTableBase,ArmorTableName=GetParamTable(1)
+ArmorTableCache=LoadParamTable(ArmorTableBase)
+writeInteger(ParamID+4*1,40000)
+addrlist.getMemoryRecordByID(601246).Address=string.format("%x",ArmorTableBase)
+addrlist.getMemoryRecordByID(601250).Address=string.format("%x",ParamID+4*1)
+local armoraddr=addrlist.getMemoryRecordByID(601252)
+
+
+RingTableBase,RingTableName=GetParamTable(2)
+RingTableCache=LoadParamTable(RingTableBase)
+writeInteger(ParamID+4*2,1000)
+addrlist.getMemoryRecordByID(601058).Address=string.format("%x",RingTableBase)
+addrlist.getMemoryRecordByID(601059).Address=string.format("%x",ParamID+4*2)
+local ringaddr=addrlist.getMemoryRecordByID(601060)
+
+
+GoodsTableBase,GoodsTableName=GetParamTable(3)
+GoodsTableCache=LoadParamTable(GoodsTableBase)
+writeInteger(ParamID+4*3,300)
+addrlist.getMemoryRecordByID(601300).Address=string.format("%x",GoodsTableBase)
+addrlist.getMemoryRecordByID(601301).Address=string.format("%x",ParamID+4*3)
+local goodsaddr=addrlist.getMemoryRecordByID(601302)
+
+
+MagicTableBase,MagicTableName=GetParamTable(14)
+MagicTableCache=LoadParamTable(MagicTableBase)
+writeInteger(ParamID+4*14,4000)
+addrlist.getMemoryRecordByID(601304).Address=string.format("%x",MagicTableBase)
+addrlist.getMemoryRecordByID(601305).Address=string.format("%x",ParamID+4*14)
+local magicaddr=addrlist.getMemoryRecordByID(601306)
+
+AttackTableBase,AttackTableName=GetParamTable(8)
+AttackTableCache=LoadParamTable(AttackTableBase)
+AttackTableInverse=inverseTable(AttackTableCache)
+writeInteger(ParamID+4*8,10210000)
+addrlist.getMemoryRecordByID(463).Address=string.format("%x",AttackTableBase)
+addrlist.getMemoryRecordByID(464).Address=string.format("%x",ParamID+4*8)
+local attackaddr=addrlist.getMemoryRecordByID(465)
+
+BulletTableBase,BulletTableName=GetParamTable(10)
+BulletTableCache=LoadParamTable(BulletTableBase)
+writeInteger(ParamID+4*10,10171000)
+addrlist.getMemoryRecordByID(601061).Address=string.format("%x",BulletTableBase)
+addrlist.getMemoryRecordByID(601062).Address=string.format("%x",ParamID+4*10)
+local bulletaddr=addrlist.getMemoryRecordByID(601063)
+
+EffectTableBase,EffectTableName=GetParamTable(15)
+EffectTableCache=LoadParamTable(EffectTableBase)
+EffectTableInverse=inverseTable(EffectTableCache)
+writeInteger(ParamID+4*15,330000)
+addrlist.getMemoryRecordByID(10492).Address=string.format("%x",EffectTableBase)
+addrlist.getMemoryRecordByID(10493).Address=string.format("%x",ParamID+4*15)
+local effectaddr=addrlist.getMemoryRecordByID(10494)
+
+GemTableBase,GemTableName=GetParamTable(154)
+GemTableCache=LoadParamTable(GemTableBase)
+writeInteger(ParamID+4*154,10000)
+addrlist.getMemoryRecordByID(83063).Address=string.format("%x",GemTableBase)
+addrlist.getMemoryRecordByID(83064).Address=string.format("%x",ParamID+4*154)
+local gemaddr=addrlist.getMemoryRecordByID(83065)
+
+NpcTableBase,NpcTableName=GetParamTable(6)
+NpcTableCache=LoadParamTable(NpcTableBase)
+writeInteger(ParamID+4*6,20100000)
+addrlist.getMemoryRecordByID(22021340).Address=string.format("%x",NpcTableBase)
+addrlist.getMemoryRecordByID(22021343).Address=string.format("%x",ParamID+4*6)
+local npcaddr=addrlist.getMemoryRecordByID(22021344)
+
+BuddyTableBase,BuddyTableName=GetParamTable(128)
+BuddyTableCache=LoadParamTable(BuddyTableBase)
+writeInteger(ParamID+4*128,23200000)
+addrlist.getMemoryRecordByID(22021387).Address=string.format("%x",BuddyTableBase)
+addrlist.getMemoryRecordByID(22021388).Address=string.format("%x",ParamID+4*128)
+local buddyaddr=addrlist.getMemoryRecordByID(22021389)
+
+BuddyStoneTableBase,BuddyStoneTableName=GetParamTable(134)
+BuddyStoneTableCache=LoadParamTable(BuddyStoneTableBase)
+writeInteger(ParamID+4*134,10000100)
+addrlist.getMemoryRecordByID(22021306).Address=string.format("%x",BuddyStoneTableBase)
+addrlist.getMemoryRecordByID(22021307).Address=string.format("%x",ParamID+4*134)
+local buddystoneaddr=addrlist.getMemoryRecordByID(22021308)
+
+BehaviorPCTableBase,BehaviorPCTableName=GetParamTable(13)
+BehaviorPCTableCache=LoadParamTable(BehaviorPCTableBase)
+writeInteger(ParamID+4*13,100299000)
+addrlist.getMemoryRecordByID(22021396).Address=string.format("%x",BehaviorPCTableBase)
+addrlist.getMemoryRecordByID(22021397).Address=string.format("%x",ParamID+4*13)
+local behaviorpcaddr=addrlist.getMemoryRecordByID(22021399)
+--ppv4
+ParamBaseV4={}
+ParamNameV4={}
+ParamCacheV4={}
+
+function SaveParam(index)
+local id = readInteger(ParamID+4*index) -- 4*index
+local addr = ParamCacheV4[index][id]
+local paramlength = readInteger(ParamBaseV4[index]+0x48+24)-readInteger(ParamBaseV4[index]+0x48)
+local addrname = string.format("%sAddr_%u",ParamNameV4[index],id)
+local rTableName = string.format("%sRestore_%u",ParamNameV4[index],id)
+local s = "local function f()\n"
+s = s .. addrname .. string.format(" = ParamCacheV4[%u][%u]\n",index,id)
+s = s .. rTableName .. string.format(" = readBytes(%s,%d,true)\n",addrname,paramlength)
+s = s .. string.format("writeBytes(%sAddr_%u,{",ParamNameV4[index],id)
+for i=0,paramlength-1 do
+s = s .. tostring(readBytes(addr+i))
+  if i<paramlength-1 then
+  s = s .. ','
+  end
+end
+s = s .. '})\nend'
+print(s)
+local fstr = loadstring(s .. "\nreturn encodeFunction(f)")()
+fstr = "decodeFunction(\""..fstr.."\")()"
+fstr = "{This script is generated by ParamPatcherV3}\n[ENABLE]\n{$lua}\n"..fstr.."\n[DISABLE]\n{$lua}\n"..string.format("writeBytes(%s,%s)",addrname,rTableName)
+
+local newmemrec=getAddressList().createMemoryRecord()
+newmemrec.appendToEntry(getAddressList().getMemoryRecordByID(1337096981))
+newmemrec.Type=vtAutoAssembler
+newmemrec.Script=fstr
+newmemrec.description=string.format("%sScript_%u",ParamNameV4[index],id)
+end
+
+local function getValidId(TableBase)
+   if not TableBase then return nil end
+   return readInteger(TableBase+64+24*0)
+end
+
+for i=0,184 do
+local tb=addrlist.getMemoryRecordByID(4030000+i*10)
+local id=addrlist.getMemoryRecordByID(4030001+i*10)
+if tb then
+   ParamBaseV4[i],ParamNameV4[i]=GetParamTable(i)
+   ParamCacheV4[i]=LoadParamTable(ParamBaseV4[i])
+   writeInteger(ParamID+4*i,getValidId(ParamBaseV4[i]))
+   tb.Address=string.format("%X",ParamBaseV4[i])
+   id.Address=string.format("%X",ParamID+4*i)
+end
+end
+--end
+function UpdateParamAddress()
+    weaponaddr.Address=string.format("%x",getValue(WeaponTableCache,readInteger(ParamID+4*0),0))
+    armoraddr.Address=string.format("%x",getValue(ArmorTableCache,readInteger(ParamID+4*1),0))
+    ringaddr.Address=string.format("%x",getValue(RingTableCache,readInteger(ParamID+4*2),0))
+    goodsaddr.Address=string.format("%x",getValue(GoodsTableCache,readInteger(ParamID+4*3),0))
+    magicaddr.Address=string.format("%x",getValue(MagicTableCache,readInteger(ParamID+4*14),0))
+    attackaddr.Address=string.format("%x",getValue(AttackTableCache,readInteger(ParamID+4*8),0))
+    bulletaddr.Address=string.format("%x",getValue(BulletTableCache,readInteger(ParamID+4*10),0))
+    effectaddr.Address=string.format("%x",getValue(EffectTableCache,readInteger(ParamID+4*15),0))
+    gemaddr.Address=string.format("%x",getValue(GemTableCache,readInteger(ParamID+4*154),0))
+    npcaddr.Address=string.format("%x",getValue(NpcTableCache,readInteger(ParamID+4*6),0))
+    buddyaddr.Address=string.format("%x",getValue(BuddyTableCache,readInteger(ParamID+4*128),0))
+    buddystoneaddr.Address=string.format("%x",getValue(BuddyStoneTableCache,readInteger(ParamID+4*134),0))
+    behaviorpcaddr.Address=string.format("%x",getValue(BehaviorPCTableCache,readInteger(ParamID+4*13),0))
+    --ppv4
+    for i=0,184 do
+        local datarec=addrlist.getMemoryRecordByID(4030002+i*10)
+        if datarec then
+           datarec.Address=string.format("%X",getValue(ParamCacheV4[i],readInteger(ParamID+4*i),0))
+        end
+    end
+    --end
+end
+
+RefreshTimer=createTimer(getMainForm())
+RefreshTimer.Interval=512
+RefreshTimer.OnTimer=function(timer)
+    if not pcall(UpdateParamAddress) and not openProcess("eldenring.exe") then
+       addrlist.getMemoryRecordByID(601248).Active=false
+    end
+end
+RefreshTimer.OnTimer(RefreshTimer)
+
+--ppv4
+function GetValidIDs(index)
+   local TableBase,TableName=GetParamTable(index)
+   if not TableBase then return nil end
+   local n=readSmallInteger(TableBase+10)
+   if not n then return nil end
+   local dropdownstring=string.format('All Valid IDs - %u - %s\n',index,TableName)
+   for i=0,n-1 do
+       local id=tostring(readInteger(TableBase+64+24*i))
+       dropdownstring=dropdownstring..id..'\n'
+   end
+   dropdownstring=dropdownstring..string.format("END - %u - %s",index,TableName)
+   local filename=os.getenv("TEMP")..string.format("\\%s.txt",TableName)
+   file = io.open(filename, "w")
+   io.output(file)
+   io.write(dropdownstring)
+   io.close(file)
+   ShellExecute(filename)
+   return dropdownstring
+end
+
+
+[DISABLE]
+unregisterSymbol(LocalPlayerOffset)
+unregistersymbol(CHRSP)
+{$lua}
+

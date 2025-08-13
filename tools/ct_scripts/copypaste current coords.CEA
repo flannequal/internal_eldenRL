@@ -1,0 +1,27 @@
+[ENABLE]
+
+{$lua}
+function disableSelf(sender)
+  sender.destroy()
+  local addr=getAddressList().getMemoryRecordByDescription("Copypaste current coords")
+  memoryrecord_unfreeze(addr)
+end
+
+local t=createTimer(nil)
+t.OnTimer=disableSelf
+t.Interval=1
+t.Enabled=true
+{$asm}
+
+TPData:
+readmem([[[[[[NetManImp]+ 80]+ E0] + 80] + 20] + 98] + 28,4)
+
+TPData+4:
+readmem([[[[[[NetManImp]+ 80]+ E0] + 80] + 20] + 98] + 1C,4)
+
+TPData+8:
+readmem([[[[[[NetManImp]+ 80]+ E0] + 80] + 20] + 98] + 2C,4)
+ 
+ 
+[DISABLE]
+

@@ -1,3 +1,4 @@
+import logging
 import time
 from typing import Dict, Any
 
@@ -28,7 +29,7 @@ class EldenHybridEnv(gym.Env):
     Observation space:
     - img: resized game frame, uint8
     - prev_actions: (10, num_actions, 1) one-hot history
-    - state: (5,) float32 [player_hp, player_stamina, boss_hp, time_alive_s, arena_phase]
+    - state: (6,) float32 [player_hp, player_stamina, boss_hp, time_alive_s, arena_phase, dist_to_boss]
 
     Rewards/termination are computed from memory reads only (no CV-derived signals).
     Resets are instant via memory (teleport + health/stamina restore).
@@ -47,6 +48,12 @@ class EldenHybridEnv(gym.Env):
         self.LOG_MEMORY_DEBUG = bool(config.get("LOG_MEMORY_DEBUG", False))
         self.MEMORY_DEBUG_INTERVAL = int(config.get("MEMORY_DEBUG_INTERVAL", 1))
 
+        # For debug overlay
+        self.font = cv2.FONT_HERSHEY_SIMPLEX
+        self.font_scale = 0.5
+        self.font_color = (255, 255, 255)
+        self.line_type = 2
+
         # Discrete action space compatible with original env
         self.NUMBER_DISCRETE_ACTIONS = int(config.get("NUMBER_DISCRETE_ACTIONS", 22))
         self.action_space = spaces.Discrete(self.NUMBER_DISCRETE_ACTIONS)
@@ -54,16 +61,17 @@ class EldenHybridEnv(gym.Env):
             {
                 "img": spaces.Box(low=0, high=255, shape=(MODEL_HEIGHT, MODEL_WIDTH, N_CHANNELS), dtype=np.uint8),
                 "prev_actions": spaces.Box(low=0, high=1, shape=(N_ACTIONS_HISTORY, self.NUMBER_DISCRETE_ACTIONS, 1), dtype=np.uint8),
-                "state": spaces.Box(low=-np.inf, high=np.inf, shape=(5,), dtype=np.float32),
+                "state": spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32),
             }
         )
 
         # Systems
         self.sct = mss.mss()
+        logging.info("Initializing MemoryClient...")
         self.mem = MemoryClient(
-            process_name=config.get("PROCESS_NAME", "eldenring.exe"),
-            memory_config_path=config.get("MEMORY_CONFIG_PATH"),
+            process_name=config.get("PROCESS_NAME", "eldenring.exe")
         )
+        logging.info("MemoryClient initialized.")
         self.rewardGen = EldenRewardMemory(config)
         self.input = InputController(enabled=not bool(config.get("DISABLE_INPUT", False)))
 
@@ -92,14 +100,23 @@ class EldenHybridEnv(gym.Env):
                 one_hot[i][self.action_history[-(i + 1)]][0] = 1
         return one_hot
 
-    def _grab_screen_shot(self) -> np.ndarray:
+    def _render_text_overlay(self, frame, hp, stam, boss_hp, dist):
+        """Draws debug text on the frame."""
+        cv2.putText(frame, f"Player HP: {hp:.2f}", (10, 20), self.font, self.font_scale, self.font_color, self.line_type)
+        cv2.putText(frame, f"Stamina: {stam:.2f}", (10, 40), self.font, self.font_scale, self.font_color, self.line_type)
+        cv2.putText(frame, f"Boss HP: {boss_hp:.2f}", (10, 60), self.font, self.font_scale, self.font_color, self.line_type)
+        cv2.putText(frame, f"Distance: {dist:.2f}", (10, 80), self.font, self.font_scale, self.font_color, self.line_type)
+        return frame
+
+    def _grab_screen_shot(self, hp=1.0, stam=1.0, boss_hp=1.0, dist=0.0) -> np.ndarray:
         monitor = self.sct.monitors[self.MONITOR]
         sct_img = self.sct.grab(monitor)
         frame = cv2.cvtColor(np.asarray(sct_img), cv2.COLOR_BGRA2RGB)
         frame = frame[46 : IMG_HEIGHT + 46, 12 : IMG_WIDTH + 12]
         obs = cv2.resize(frame, (MODEL_WIDTH, MODEL_HEIGHT))
         if self.DEBUG_MODE:
-            cv2.imshow("debug-render", obs)
+            obs_with_overlay = self._render_text_overlay(obs.copy(), hp, stam, boss_hp, dist)
+            cv2.imshow("debug-render", obs_with_overlay)
             cv2.waitKey(1)
         return obs
 
@@ -107,15 +124,16 @@ class EldenHybridEnv(gym.Env):
         hp = self.mem.read_player_hp()
         stam = self.mem.read_player_stamina()
         boss_hp = self.mem.read_boss_hp() if self.GAME_MODE == "PVE" else 1.0
+        dist = self.mem.read_distance_to_boss() or 0.0
         time_alive = max(0.0, time.time() - self.time_alive_ref)
-        return float(hp), float(stam), float(boss_hp), float(time_alive), float(self.curr_phase)
+        return float(hp), float(stam), float(boss_hp), float(dist), float(time_alive), float(self.curr_phase)
 
     # ----- Gym API -----
     def step(self, action: int):
         t0 = time.time()
 
         # Read memory state and compute reward for previous transition
-        hp, stam, boss_hp, time_alive, phase = self._read_state()
+        hp, stam, boss_hp, dist, time_alive, phase = self._read_state()
         reward, death, boss_death, duel_won = self.rewardGen.update(
             hp, stam, boss_hp, self.first_step
         )
@@ -124,24 +142,32 @@ class EldenHybridEnv(gym.Env):
         if self.LOG_MEMORY_DEBUG and (self.step_iteration % max(1, self.MEMORY_DEBUG_INTERVAL) == 0):
             try:
                 pos = self.mem.read_player_position()
+                logging.info(
+                    f"[MEM] step={self.step_iteration} hp={hp:.3f} stam={stam:.3f} boss_hp={boss_hp:.3f} "
+                    f"pos=({pos[0]}, {pos[1]}, {pos[2]}) dist={dist:.3f} time_alive={time_alive:.2f}s"
+                )
             except Exception:
                 pos = (None, None, None)
-            print(
-                f"[MEM] step={self.step_iteration} hp={hp:.3f} stam={stam:.3f} boss_hp={boss_hp:.3f} "
-                f"pos=({pos[0]}, {pos[1]}, {pos[2]}) time_alive={time_alive:.2f}s"
-            )
+                logging.info(
+                    f"[MEM] step={self.step_iteration} hp={hp:.3f} stam={stam:.3f} boss_hp={boss_hp:.3f} "
+                    f"pos=({pos[0]}, {pos[1]}, {pos[2]}) dist={dist:.3f} time_alive={time_alive:.2f}s"
+                )
 
         terminated = bool(death or boss_death or duel_won)
         truncated = bool((time.time() - self.t_start) > 600)
 
+        action_name = "UNKNOWN"
         if not (terminated or truncated):
-            self.input.take_action(int(action))
+            action_name = self.input.take_action(int(action))
+        
+        logging.info(f"Action: {action} -> {action_name} | Reward: {reward:.3f}")
 
         # Compose observation
+        state_vec = [hp, stam, boss_hp, time_alive, phase, dist]
         obs = {
-            "img": self._grab_screen_shot(),
+            "img": self._grab_screen_shot(hp, stam, boss_hp, dist),
             "prev_actions": self._one_hot_prev_actions(),
-            "state": np.asarray([hp, stam, boss_hp, time_alive, phase], dtype=np.float32),
+            "state": np.asarray(state_vec, dtype=np.float32),
         }
 
         # Book-keeping
@@ -164,6 +190,25 @@ class EldenHybridEnv(gym.Env):
 
         # Memory-based instant reset
         self.mem.reset_arena(self.BOSS, second_phase=False)
+        
+        # --- Robust Reset Logic ---
+        # Give the game a moment to load after teleport
+        logging.info("Waiting for game to load after teleport...")
+        time.sleep(2.0) 
+
+        # Attempt to get a valid state, retrying if boss isn't loaded yet
+        max_retries = 5
+        for i in range(max_retries):
+            hp, stam, boss_hp, dist, time_alive, phase = self._read_state()
+            if boss_hp < 1.0:
+                logging.info(f"Successfully read initial boss HP: {boss_hp:.3f}. Proceeding with reset.")
+                break
+            logging.warning(f"Boss HP not yet resolved (is 1.0). Retrying in 1s... ({i+1}/{max_retries})")
+            time.sleep(1.0)
+        else:
+            logging.error("Failed to resolve boss HP after multiple retries. Reset may be unstable.")
+        # --- End Robust Reset Logic ---
+
         self.time_alive_ref = time.time()
         self.curr_phase = 1.0
 
@@ -173,11 +218,13 @@ class EldenHybridEnv(gym.Env):
         self.first_step = True
         self.t_start = time.time()
 
-        hp, stam, boss_hp, time_alive, phase = self._read_state()
+        # Final state read
+        hp, stam, boss_hp, dist, time_alive, phase = self._read_state()
+        state_vec = [hp, stam, boss_hp, time_alive, phase, dist]
         obs = {
-            "img": self._grab_screen_shot(),
+            "img": self._grab_screen_shot(hp, stam, boss_hp, dist),
             "prev_actions": self._one_hot_prev_actions(),
-            "state": np.asarray([hp, stam, boss_hp, time_alive, phase], dtype=np.float32),
+            "state": np.asarray(state_vec, dtype=np.float32),
         }
         return obs, {}
 
@@ -186,5 +233,6 @@ class EldenHybridEnv(gym.Env):
 
     def close(self):
         self.mem.detach()
+        cv2.destroyAllWindows()
 
 
