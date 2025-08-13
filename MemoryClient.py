@@ -54,11 +54,44 @@ class MemoryClient:
         self._arena_coords_db: Dict[int, Dict[str, Any]] = {}
         self._bonfires_db: Dict[str, int] = {}
         self._addresses_db: Dict[str, Any] = {}
+        self._addr_records: Dict[str, Any] = {}
+        self._bases_static: Dict[str, int] = {}
+        self._wcm_offsets: Dict[str, int] = {}
+        self._char_offsets: Dict[str, int] = {}
+        # Cached boss selection
+        self._boss_param_id: Optional[int] = None
+        self._boss_stats_addr: int = 0
+        self._boss_comp_addr: int = 0
+        self._boss_transform_addr: int = 0
+        self._boss_last_resolve: float = 0.0
+        self._boss_resolve_retry_sec: float = 1.0
         # Load YAML configs
         self._load_arenas_meta()
         self._load_arenas_coords()
         self._load_bonfires()
         self._load_addresses()
+        # Parse address records and bases_static
+        if isinstance(self._addresses_db, dict):
+            self._addr_records = self._addresses_db.get('addresses', {}) or {}
+            bases_static = self._addresses_db.get('bases_static', {}) or {}
+            for k, v in bases_static.items():
+                try:
+                    self._bases_static[k] = int(str(v), 16)
+                except Exception:
+                    continue
+            # Helper offsets for entity list scanning (optional)
+            wcm = self._addresses_db.get('worldchrman') or {}
+            ch = self._addresses_db.get('character') or {}
+            for k, v in (wcm.items() if isinstance(wcm, dict) else []):
+                try:
+                    self._wcm_offsets[str(k)] = int(str(v), 16)
+                except Exception:
+                    continue
+            for k, v in (ch.items() if isinstance(ch, dict) else []):
+                try:
+                    self._char_offsets[str(k)] = int(str(v), 16)
+                except Exception:
+                    continue
 
     # ----- Config loading -----
     def _safe_load_yaml(self, path: str) -> Dict[str, Any]:
@@ -116,6 +149,23 @@ class MemoryClient:
             data = self._safe_load_yaml(os.path.join('config', 'addresses.sample.yaml'))
         if isinstance(data, dict):
             self._addresses_db = data
+        # Also support JSON bases exported by CE (elden_bases.json)
+        try:
+            import json  # type: ignore
+            json_path = os.path.join('config', 'elden_bases.json')
+            if os.path.isfile(json_path):
+                with open(json_path, 'r', encoding='utf-8') as fh:
+                    bases = json.load(fh)
+                if isinstance(bases, dict):
+                    if 'bases_static' not in self._addresses_db:
+                        self._addresses_db['bases_static'] = {}
+                    for k, v in bases.items():
+                        try:
+                            self._addresses_db['bases_static'][k] = int(str(v), 16)
+                        except Exception:
+                            continue
+        except Exception:
+            pass
 
     # ----- Process management -----
     def attach(self) -> bool:
@@ -124,16 +174,8 @@ class MemoryClient:
         if now - self._last_attach_attempt < 0.5:
             return self.attached
         self._last_attach_attempt = now
-        if self._uses_soulsgym:
-            # SoulsGym Game attaches on access; here we check a simple read to validate
-            try:
-                _ = self._sg_game.player_max_hp  # type: ignore[attr-defined]
-                self.attached = True
-            except Exception:
-                self.attached = False
-        else:
-            # Simulation or minimal fallback
-            self.attached = True
+        # Simulation path attaches without process handle
+        self.attached = self.simulate or self.attached
         return self.attached
 
     def detach(self) -> None:
@@ -182,21 +224,26 @@ class MemoryClient:
 
     def read_boss_hp(self) -> float:
         """Return boss HP in [0, 1] if a boss is active, else 1.0."""
-        if self._uses_soulsgym and not self.simulate:
-            # Try to read lock-on target HP via SoulsGym address map if provided by user
-            try:
-                data_addresses = getattr(self._sg_game, 'data').addresses  # type: ignore[attr-defined]
-                target_hp_record = data_addresses.get('TargetHP')
-                target_max_hp_record = data_addresses.get('TargetMaxHP')
-                if target_hp_record is not None and target_max_hp_record is not None:
-                    curr = float(self._sg_game.mem.read_record(target_hp_record))  # type: ignore[attr-defined]
-                    mxx = float(self._sg_game.mem.read_record(target_max_hp_record))  # type: ignore[attr-defined]
-                    if mxx > 0:
-                        self._boss_hp = max(0.0, min(1.0, curr / mxx))
-                        return self._boss_hp
-            except Exception:
-                pass
-            # Fallback: return last known placeholder ratio
+        if not self.simulate and self.attached and hasattr(self, '_pm') and self._pm is not None:
+            # Fast path: read from cached stats address if available
+            if self._boss_stats_addr:
+                cur = self._read_int(self._boss_stats_addr)
+                mxx = self._read_int(self._boss_stats_addr + 4)
+                if mxx > 0:
+                    self._boss_hp = max(0.0, min(1.0, float(cur) / float(mxx)))
+                    return self._boss_hp
+            # Resolve target once (or retry after cooldown)
+            now = time.time()
+            if (now - self._boss_last_resolve) < self._boss_resolve_retry_sec:
+                return float(self._boss_hp)
+            self._boss_last_resolve = now
+            self._resolve_boss_stats_address()
+            # Try immediate read after resolve
+            if self._boss_stats_addr:
+                cur = self._read_int(self._boss_stats_addr)
+                mxx = self._read_int(self._boss_stats_addr + 4)
+                if mxx > 0:
+                    self._boss_hp = max(0.0, min(1.0, float(cur) / float(mxx)))
             return float(self._boss_hp)
         if self.simulate:
             elapsed = max(0.0, time.time() - self._t_reset)
@@ -312,7 +359,91 @@ class MemoryClient:
             self.set_player_full_health()
             self.set_player_full_stamina()
             self.set_boss_hp(1.0)
+        # Capture boss Param ID for this arena (used for cached selection)
+        meta_entry = self._arena_meta_db.get(int(arena_id))
+        self._boss_param_id = None
+        if meta_entry and isinstance(meta_entry.get('boss'), dict):
+            try:
+                self._boss_param_id = int(meta_entry['boss'].get('char_param_id'))
+            except Exception:
+                self._boss_param_id = None
+        self._boss_stats_addr = 0
+        self._boss_comp_addr = 0
+        self._boss_transform_addr = 0
+        self._boss_last_resolve = 0.0
         self._t_reset = time.time()
+
+    # ----- Helpers -----
+    def _resolve_boss_stats_address(self) -> None:
+        """Find and cache the boss stats qword address by Param ID. No-op if not found."""
+        self._boss_stats_addr = 0
+        self._boss_comp_addr = 0
+        self._boss_transform_addr = 0
+        if self._pm is None:
+            return
+        # Determine target Param ID (from cached meta)
+        target_param_id = self._boss_param_id
+        # If none set, try first arena or skip
+        if target_param_id is None:
+            return
+        wcm_ptr = self._resolve_base_ptr('WorldChrMan')
+        begin_off = self._wcm_offsets.get('character_list_begin_off', 0x1F1B8)
+        end_off = self._wcm_offsets.get('character_list_end_off', 0x1F1C0)
+        begin = self._read_qword(wcm_ptr + begin_off)
+        end = self._read_qword(wcm_ptr + end_off)
+        if not (begin and end and end > begin):
+            return
+        p = begin
+        comp_off = self._char_offsets.get('comp_190_off', 0x190)
+        stats_off = self._char_offsets.get('stats_qword_off', 0x138)
+        tr_off = self._char_offsets.get('transform_68_off', 0x68)
+        while p < end:
+            ent = self._read_qword(p)
+            p += 8
+            if ent is None or ent < 0x10000:
+                continue
+            pid = self._read_int(ent + 0x60)
+            if int(pid) != int(target_param_id):
+                continue
+            comp = self._read_qword(ent + comp_off)
+            if not comp:
+                continue
+            stats = self._read_qword(comp + stats_off)
+            if stats:
+                self._boss_stats_addr = int(stats)
+                self._boss_comp_addr = int(comp)
+                self._boss_transform_addr = self._read_qword(self._boss_comp_addr + tr_off)
+                return
+
+    # ----- Additional reads -----
+    def read_boss_position(self) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+        if self.simulate:
+            return None, None, None
+        if self._pm is None:
+            return None, None, None
+        if not self._boss_transform_addr:
+            self._resolve_boss_stats_address()
+        addr = self._boss_transform_addr
+        if not addr:
+            return None, None, None
+        x = self._read_float(addr + 0x70)
+        y = self._read_float(addr + 0x74)
+        z = self._read_float(addr + 0x78)
+        return float(x), float(y), float(z)
+
+    def read_distance_to_boss(self) -> Optional[float]:
+        px, py, pz = self.read_player_position()
+        bx, by, bz = self.read_boss_position()
+        if None in (px, py, pz, bx, by, bz):
+            return None
+        try:
+            dx = float(px) - float(bx)
+            dy = float(py) - float(by)
+            dz = float(pz) - float(bz)
+            import math
+            return float(math.sqrt(dx * dx + dy * dy + dz * dz))
+        except Exception:
+            return None
 
     # ----- Test helpers (optional) -----
     def simulate_damage(self, player_delta: Optional[float] = None, boss_delta: Optional[float] = None) -> None:
