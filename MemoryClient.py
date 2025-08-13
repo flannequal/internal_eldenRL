@@ -81,8 +81,9 @@ class MemoryClient:
     def _scan_aob(self, aob_pattern: str) -> Optional[int]:
         if not self.attached or not self._pm: return None
         try:
+            # Use pattern_scan instead of find_pattern
             pymem_pattern = " ".join(aob_pattern.split())
-            address = self._pm.find_pattern(pymem_pattern)
+            address = self._pm.pattern_scan(pymem_pattern)
             if address:
                 logging.info(f"AOB Scan found '{aob_pattern}' at: {hex(address)}")
                 return address
@@ -108,7 +109,7 @@ class MemoryClient:
                 if name not in self._bases_static: # Only scan if not already a static address
                     resolved_addr = self._scan_aob(aob)
                     if resolved_addr:
-                        self._bases_static[name] = resolved_addr
+                        self._bases_static[name] = resolved_addr # Cache the resolved address
             
             # Check if essential bases are resolved immediately after attachment and AOB scans
             if not self._check_essential_addresses():
