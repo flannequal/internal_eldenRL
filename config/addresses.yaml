@@ -1,6 +1,7 @@
 bases_static:
   GameDataMan: 0x3D5DF38
   WorldChrMan: 0x3D65F88
+  LocalPlayerOffset: 0x3D76E80
   MapItemMan: 0x3D67A50
   GameMan: 0x3D69918
   FieldArea: 0x3D691D8
