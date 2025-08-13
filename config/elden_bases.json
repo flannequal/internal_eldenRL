@@ -1,8 +1,14 @@
 {
-  "GameDataMan": "0x3D5DF38",
-  "WorldChrMan": "0x3D65F88",
-  "MapItemMan": "0x3D67A50",
-  "GameMan": "0x3D69918",
-  "FieldArea": "0x3D691D8",
-  "DamageCtrl": "0x3D66378"
+  "bases": {
+    "GameMan": "0x3D69918",
+    "WorldChrMan": "0x3D65F88",
+    "CSFlipper": "0x4589AD8",
+    "GameDataMan": "0x3D5DF38",
+    "MapItemMan": "0x3D67A50",
+    "DamageCtrl": "0x3D66378",
+    "MsgRepository": "0x3D7D4F8",
+    "WorldMapMan": "0x3D6A320",
+    "CSLuaEventManager": "0x3D67E48",
+    "FieldArea": "0x3D691D8"
+  }
 }

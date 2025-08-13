@@ -2,3 +2,5 @@ logs/
 models/
 __pycache__/
 .aider*
+tools/ER_TGA_v1.17.0.CT
+tools/Hexinton_aio-v4.25_ce7.5.ct
