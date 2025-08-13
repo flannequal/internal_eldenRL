@@ -9,7 +9,7 @@ arenas:
     name: Beastman
     map_id: 1F030000
     map: Limgrave
-    nearest_bonfire_key: Limgrave - Groveside Cave: 31032950
+    nearest_bonfire_key: "Limgrave - Groveside Cave: 31032950"
     player_spawn:
       x: -3.797457933
       y: -7.21598196

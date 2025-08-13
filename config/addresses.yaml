@@ -6,8 +6,10 @@ bases_static:
   FieldArea: 0x3D691D8
   DamageCtrl: 0x3D66378
   TeleportFunction: 0x1337040
-  CSLuaEventManager: "AOB: 48 83 3D ?? ?? ?? ?? 00 48 8B F9 0F 84 ?? ?? ?? ?? 48" # AOB for CSLuaEventManager
-  WarpFunction: "AOB: C3 ?? ?? ???????? 57 48 83 EC ?? 48 8B FA 44" # AOB for LuaWarp_01 (will be resolved and +2 applied)
+
+bases_aob:
+  CSLuaEventManager: "48 83 3D ?? ?? ?? ?? 00 48 8B F9 0F 84 ?? ?? ?? ?? 48" # AOB for CSLuaEventManager
+  WarpFunction: "C3 ?? ?? ???????? 57 48 83 EC ?? 48 8B FA 44" # AOB for LuaWarp_01 (will be resolved and +2 applied)
 
 addresses:
   PlayerHP:
