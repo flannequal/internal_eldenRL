@@ -81,9 +81,8 @@ class MemoryClient:
     def _scan_aob(self, aob_pattern: str) -> Optional[int]:
         if not self.attached or not self._pm: return None
         try:
-            # Use pattern_scan instead of find_pattern
             pymem_pattern = " ".join(aob_pattern.split())
-            address = self._pm.pattern_scan(pymem_pattern)
+            address = self._pm.pattern(pymem_pattern)
             if address:
                 logging.info(f"AOB Scan found '{aob_pattern}' at: {hex(address)}")
                 return address
