@@ -87,52 +87,6 @@ class MemoryClient:
                     f"Invalid AOB pattern type for '{name}': {type(pattern)}"
                 )
 
-    # def _scan_aob(self, aob_pattern_str: str) -> Optional[int]:
-    #     """Scans for an AOB pattern using pymem.pattern.pattern_scan_module."""
-    #     if not self.attached or not self._pm or not self._module:
-    #         logging.warning(
-    #             "Cannot scan AOB: Not attached or module not loaded.")
-    #         return None
-    #     try:
-    #         # Clean up extra spaces and convert pattern to bytes
-    #         pattern_bytes = []
-    #         for byte_str in aob_pattern_str.split():
-    #             byte_str = byte_str.strip()
-    #             if byte_str == "??":
-    #                 pattern_bytes.append(0x00)
-    #             elif len(byte_str) == 2:
-    #                 pattern_bytes.append(int(byte_str, 16))
-    #             else:
-    #                 # Handle multiple wildcards like "????"
-    #                 pattern_bytes.extend([0x00] * (len(byte_str) // 2))
-
-    #         pattern_bytes = bytes(pattern_bytes)
-    #         logging.debug(f"Scanning for pattern bytes: {pattern_bytes.hex()}")
-
-    #         # Scan the module
-    #         address = pymem.pattern.pattern_scan_module(
-    #             self._pm.process_handle, self._module, pattern_bytes
-    #         )
-
-    #         if address:
-    #             logging.info(
-    #                 f"AOB Scan found '{aob_pattern_str}' at: {hex(address)}")
-    #             return address
-    #         else:
-    #             logging.warning(
-    #                 f"AOB Scan failed for pattern: '{aob_pattern_str}'")
-    #             return None
-
-    #     except ValueError as ve:
-    #         logging.error(
-    #             f"Error converting AOB pattern '{aob_pattern_str}' to bytes: {ve}"
-    #         )
-    #         return None
-    #     except Exception as e:
-    #         logging.error(
-    #             f"Error during AOB scan for '{aob_pattern_str}': {e}")
-    #         return None
-
     def _parse_aob_pattern(self, aob_pattern_str: str):
         """
         Parse a human AOB string into (pattern_bytes, mask_bytes).
@@ -402,22 +356,250 @@ class MemoryClient:
                 f"Unexpected error reading memory at {hex(address)}: {e}")
             return None
 
-    def _resolve_pointer_path(self, path_key: str) -> Optional[int]:
-        """Resolve a memory address by key, supporting static bases and AOB patterns."""
+    # --- helpers --------------------------------------------------------------
+
+    def _read_ptr_value(self, addr: int) -> Optional[int]:
+        """Read an unsigned pointer-sized value (8 bytes) from addr. Return None on failure."""
+        try:
+            data = self._pm.read_bytes(addr, 8)
+            return int.from_bytes(data, "little", signed=False)
+        except Exception as e:
+            logging.debug(
+                f"_read_ptr_value: failed to read 8 bytes at {hex(addr)}: {e}")
+            return None
+
+    def _read_typed_value(self, addr: int, type_name: str):
+        """
+        Read a value at `addr` according to type_name.
+        Supported: 'int' (32-bit signed), 'uint' (32-bit unsigned), 'int64', 'uint64',
+                'float' (32-bit), 'double' (64-bit), 'bool', 'bytes:<len>'
+        Returns Python value or None on failure.
+        """
+        try:
+            if type_name is None:
+                # default: read pointer-sized integer
+                val = self._read_ptr_value(addr)
+                return val
+
+            t = str(type_name).lower()
+            if t == "int":
+                data = self._pm.read_bytes(addr, 4)
+                return int.from_bytes(data, "little", signed=True)
+            if t == "uint":
+                data = self._pm.read_bytes(addr, 4)
+                return int.from_bytes(data, "little", signed=False)
+            if t == "int64" or t == "long":
+                data = self._pm.read_bytes(addr, 8)
+                return int.from_bytes(data, "little", signed=True)
+            if t == "uint64":
+                data = self._pm.read_bytes(addr, 8)
+                return int.from_bytes(data, "little", signed=False)
+            if t == "float":
+                import struct
+                data = self._pm.read_bytes(addr, 4)
+                return struct.unpack("<f", data)[0]
+            if t == "double":
+                import struct
+                data = self._pm.read_bytes(addr, 8)
+                return struct.unpack("<d", data)[0]
+            if t == "bool":
+                data = self._pm.read_bytes(addr, 1)
+                return bool(int.from_bytes(data, "little"))
+            if t.startswith("bytes:"):
+                try:
+                    length = int(t.split(":", 1)[1])
+                except Exception:
+                    length = 16
+                return self._pm.read_bytes(addr, length)
+            # fallback: try pointer-sized
+            return self._read_ptr_value(addr)
+        except Exception as e:
+            logging.debug(
+                f"_read_typed_value: failed to read {type_name} at {hex(addr)}: {e}")
+            return None
+
+    def _parse_offset(self, off):
+        """Convert offset expressed as int or hex string into int."""
+        if isinstance(off, int):
+            return off
+        if isinstance(off, str):
+            s = off.strip().lower()
+            # allow formats like "0x10ef8" or "10ef8"
+            if s.startswith("0x"):
+                return int(s, 16)
+            try:
+                return int(s, 16)
+            except ValueError:
+                try:
+                    return int(s)
+                except ValueError:
+                    logging.warning(f"Invalid offset format: {off}")
+                    return None
+        logging.warning(f"Unsupported offset type: {type(off)}")
+        return None
+
+# --- pointer-chain follower -----------------------------------------------
+
+    def _follow_pointer_chain(self, base_addr: int, offsets: list[int]) -> Optional[int]:
+        """Given base address and list of offsets (ints), follow pointer chain and return final address."""
+        addr = base_addr
+        for i, off in enumerate(offsets):
+            if addr is None:
+                logging.debug(
+                    f"_follow_pointer_chain: addr became None at step {i}")
+                return None
+            target = addr + off
+            # When offsets include a final 0 which means "addr + 0" and no deref, we still read pointer at that address
+            ptr = self._read_ptr_value(target)
+            if ptr is None:
+                logging.debug(
+                    f"_follow_pointer_chain: failed to read pointer at {hex(target)} (step {i})")
+                return None
+            logging.debug(
+                f"_follow_pointer_chain: step {i}: read {hex(ptr)} from {hex(target)}")
+            addr = ptr
+        return addr
+
+# --- main resolver/reader -----------------------------------------------
+
+    def _resolve_pointer_path(self, path_key: str, _visited: Optional[set] = None) -> Optional[int]:
+        """
+        Resolve the name `path_key` to a numeric address.
+        Supports:
+        - static bases in self._bases_static (already parsed ints)
+        - aob patterns in self._aob_patterns (scanned)
+        - pointer-chain dicts under self._addresses (with keys: base, offsets)
+        Prevents recursion loops with _visited set.
+        """
         if not self.attached or not self._pm:
             return None
 
-        # 1. Check static base addresses
-        if path_key in self._bases_static:
-            return self._bases_static[path_key]
+        if _visited is None:
+            _visited = set()
+        if path_key in _visited:
+            logging.warning(
+                f"_resolve_pointer_path: recursive reference detected for '{path_key}'")
+            return None
+        _visited.add(path_key)
 
-        # 2. Check AOB patterns
-        if path_key in self._aob_patterns:
-            return self._scan_aob(self._aob_patterns[path_key])
+        # 1) direct static base
+        bases = getattr(self, "_bases_static", {})
+        if path_key in bases:
+            logging.debug(
+                f"_resolve_pointer_path: '{path_key}' found in bases_static -> {hex(bases[path_key])}")
+            return bases[path_key]
 
-        # 3. Not found
-        logging.warning(f"Address key '{path_key}' not found in config.")
+        # 2) direct aob pattern
+        aobs = getattr(self, "_aob_patterns", {})
+        if path_key in aobs:
+            addr = self._scan_aob(aobs[path_key])
+            logging.debug(
+                f"_resolve_pointer_path: '{path_key}' found in aob_patterns -> {addr}")
+            return addr
+
+        # 3) look in addresses table for pointer-chain entry
+        path_info = getattr(self, "_addresses", {}).get(path_key)
+        if path_info is None:
+            logging.debug(
+                f"_resolve_pointer_path: '{path_key}' not in addresses table")
+            return None
+
+        # If the config has a plain integer or hex string
+        if isinstance(path_info, int):
+            return path_info
+        if isinstance(path_info, str):
+            s = path_info.strip()
+            if s.upper().startswith("AOB:"):
+                return self._scan_aob(s)
+            try:
+                return int(s, 16)
+            except ValueError:
+                # try treat as reference to another key (recursive)
+                return self._resolve_pointer_path(s, _visited)
+
+        # If dict -> expect base + offsets (offsets optional)
+        if isinstance(path_info, dict):
+            base_spec = path_info.get("base") or path_info.get(
+                "address") or path_info.get("module_base")
+            offsets_spec = path_info.get(
+                "offsets") or path_info.get("pointer_offsets") or []
+            # resolve base_spec
+            base_addr = None
+            if isinstance(base_spec, int):
+                base_addr = base_spec
+            elif isinstance(base_spec, str):
+                bs = base_spec.strip()
+                if bs.upper().startswith("AOB:"):
+                    base_addr = self._scan_aob(bs)
+                else:
+                    # named base, hex string, or other key
+                    try:
+                        base_addr = int(bs, 16)
+                    except ValueError:
+                        # treat as named key
+                        base_addr = self._resolve_pointer_path(bs, _visited)
+            else:
+                logging.warning(
+                    f"_resolve_pointer_path: unsupported base_spec type for '{path_key}': {type(base_spec)}")
+                return None
+
+            if base_addr is None:
+                logging.warning(
+                    f"_resolve_pointer_path: base for '{path_key}' could not be resolved: {base_spec}")
+                return None
+
+            # parse offsets into ints
+            offsets = []
+            for o in offsets_spec:
+                parsed = self._parse_offset(o)
+                if parsed is None:
+                    logging.warning(
+                        f"_resolve_pointer_path: skipping invalid offset '{o}' for '{path_key}'")
+                    continue
+                offsets.append(parsed)
+
+            if not offsets:
+                # no offsets: base_addr is the final address
+                logging.debug(
+                    f"_resolve_pointer_path: '{path_key}' resolved to base {hex(base_addr)} (no offsets)")
+                return base_addr
+
+            # follow pointer chain
+            final = self._follow_pointer_chain(base_addr, offsets)
+            if final is None:
+                logging.warning(
+                    f"_resolve_pointer_path: failed to follow pointer chain for '{path_key}' (base {hex(base_addr)})")
+            else:
+                logging.debug(
+                    f"_resolve_pointer_path: '{path_key}' resolved to {hex(final)}")
+            return final
+
+        logging.warning(
+            f"_resolve_pointer_path: unsupported address format for '{path_key}' ({type(path_info)})")
         return None
+
+    # Convenience: get value (resolve + read typed value)
+    def get_address_value(self, path_key: str):
+        """
+        Resolve an address key from addresses.yaml and read the memory value
+        using the 'type' field if present.
+        Returns (resolved_addr, value) or (None, None) on failure.
+        """
+        addr = self._resolve_pointer_path(path_key)
+        if addr is None:
+            logging.debug(
+                f"get_address_value: could not resolve address for '{path_key}'")
+            return None, None
+
+        # determine type from addresses table when available
+        path_info = getattr(self, "_addresses", {}).get(path_key, {})
+        desired_type = None
+        if isinstance(path_info, dict):
+            desired_type = path_info.get("type")
+        val = self._read_typed_value(addr, desired_type)
+        logging.debug(
+            f"get_address_value: '{path_key}' -> {hex(addr)}, value={val} (type={desired_type})")
+        return addr, val
 
     def read_player_hp(self) -> Optional[float]:
         addr = self._resolve_pointer_path("PlayerHP")
