@@ -12,8 +12,8 @@ This guide shows a reliable way to extract the lock-on target (boss) HP pointers
 
 ```mermaid
 flowchart TD
-  A["Start Elden Ring (offline)"] --> B["Load CE table and attach"]
-  B --> C["Lock on target (boss)"]
+  A["Start Elden Ring offline"] --> B["Load CE table and attach"]
+  B --> C["Lock on target boss"]
   C --> D{"Find Target HP"}
   D -->|"Use 'Display Target's Status' to view HP"| E["Browse memory/structure"]
   D -->|"Take damage -> Logger/Find what writes"| F["Trace write -> HP address"]

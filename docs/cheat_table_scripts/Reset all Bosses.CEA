@@ -1,0 +1,69 @@
+//Credits Script : Pav;
+[ENABLE]
+aobscanmodule(EventFlag_C1,eldenring.exe,48 89 5C 24 08 48 89 74 24 18 57 48 83 EC 30 48 8B DA 41 0F B6 F8 8B 12 48 8B F1 85 D2 0F 84 ?? ?? ?? ??)
+registersymbol(EventFlag_C1)
+
+alloc(ResetAllBosses,2048,eldenring.exe)
+registersymbol(ResetAllBosses)
+
+label(Loop1)
+
+label(SetEventFlag)
+
+alloc(EventFlagID,4)
+registersymbol(EventFlagID)
+
+createthread(ResetAllBosses)
+
+ResetAllBosses:
+xor ecx,ecx
+mov r15d,40
+
+mov rax,[PARAM]
+mov rax,[rax+8B0] //GameAreaParam
+mov rax,[rax+80]
+mov rax,[rax+80]
+Loop1:
+movzx ebx,word ptr [rax+0A]
+lea rdx,[rax+r15d]
+
+mov r11d,[rdx+08]
+mov r13d,[rdx]
+
+push rax
+push rcx
+push r15
+call SetEventFlag
+pop r15
+pop rcx
+pop rax
+
+lea r15d,[r15+18]
+inc ecx
+cmp ecx,ebx
+jl Loop1
+
+ret
+
+
+SetEventFlag:
+mov rcx,[EventFlagMan]
+mov r8l,00 //flag state
+lea rdx,[EventFlagID]
+mov [rdx],r13d
+
+sub rsp,28
+call EventFlag_C1
+add rsp,28
+ret
+
+
+[DISABLE]
+dealloc(ResetAllBosses)
+unregistersymbol(ResetAllBosses)
+
+dealloc(EventFlagID)
+unregistersymbol(EventFlagID)
+
+
+unregistersymbol(EventFlag_C1)
