@@ -58,16 +58,14 @@ class MemoryClient:
 
         addresses_yaml = self._safe_load_yaml(os.path.join('config', 'addresses.yaml'))
         
-        # Correctly parse the 'addresses' dictionary
         self._addresses = addresses_yaml.get('addresses', {})
         
-        # Process bases_static, separating static addresses from AOB patterns
         self._bases_static = {}
         self._aob_scans = {}
         for name, value in addresses_yaml.get('bases_static', {}).items():
             if isinstance(value, str) and value.startswith("AOB"):
                 self._aob_scans[name] = value
-            elif isinstance(value, (int, str)): # Handle potential string representations of hex
+            elif isinstance(value, (int, str)):
                 try:
                     self._bases_static[name] = int(str(value), 16)
                 except ValueError:
@@ -82,9 +80,7 @@ class MemoryClient:
     def _scan_aob(self, aob_pattern: str) -> Optional[int]:
         if not self.attached or not self._pm: return None
         try:
-            # pymem expects a pattern string like "48 83 3D ?? ?? ?? ?? 00"
             pymem_pattern = " ".join(aob_pattern.split())
-            
             address = self._pm.find_pattern(pymem_pattern)
             if address:
                 logging.info(f"AOB Scan found '{aob_pattern}' at: {hex(address)}")
@@ -113,6 +109,12 @@ class MemoryClient:
                     if resolved_addr:
                         self._bases_static[name] = resolved_addr
             
+            # Check if essential bases are resolved
+            if not self._bases_static.get('WorldChrMan') or not self._bases_static.get('CSLuaEventManager'):
+                logging.error("Failed to resolve essential base addresses (WorldChrMan or CSLuaEventManager). Detaching.")
+                self.detach()
+                return False
+
             return True
         except pymem.exception.ProcessNotFound:
             logging.warning(f"Process '{self.process_name}' not found. Is the game running?")
@@ -122,9 +124,36 @@ class MemoryClient:
             return False
 
     def detach(self) -> None:
-        if self._pm: self._pm.close_process()
+        if self._pm:
+            try:
+                self._pm.close_process()
+            except Exception as e:
+                logging.error(f"Error closing process: {e}")
         self.attached = False
         self._pm = None
+
+    def _read_memory(self, address: int, length: int, data_type: str = 'int') -> Any:
+        """Safely reads memory, returning None on error."""
+        if not self.attached or not self._pm:
+            return None
+        try:
+            if data_type == 'int':
+                return self._pm.read_int(address)
+            elif data_type == 'longlong':
+                return self._pm.read_longlong(address)
+            elif data_type == 'float':
+                return self._pm.read_float(address)
+            elif data_type == 'bytes':
+                return self._pm.read_bytes(address, length)
+            else:
+                logging.warning(f"Unsupported data type for memory read: {data_type}")
+                return None
+        except pymem.exception.MemoryReadError as e:
+            logging.error(f"MemoryReadError: Could not read memory at: {hex(address)}, length: {length} - {e}")
+            return None
+        except Exception as e:
+            logging.error(f"Unexpected error reading memory at {hex(address)}: {e}")
+            return None
 
     def _resolve_pointer_path(self, path_key: str) -> Optional[int]:
         if not self.attached or not self._pm: return None
@@ -142,7 +171,6 @@ class MemoryClient:
 
             base_addr = self._bases_static.get(base_key)
             
-            # If base_addr is not yet resolved (e.g., it's an AOB pattern)
             if base_addr is None and base_key in self._aob_scans:
                 resolved_addr = self._scan_aob(self._aob_scans[base_key])
                 if resolved_addr is None:
@@ -151,23 +179,26 @@ class MemoryClient:
                 self._bases_static[base_key] = resolved_addr # Cache the resolved address
                 base_addr = resolved_addr
             
-            # If base_addr is still None after potential AOB scan, return None
             if base_addr is None:
                 logging.warning(f"Base address for '{base_key}' could not be resolved.")
                 return None
 
-            # If it's a direct address (not a pointer chain)
             if 'offsets' not in path_info or not path_info['offsets']:
                 return base_addr
 
-            # Pointer chain resolution
             addr = base_addr
             offsets = path_info['offsets']
             
             for i, offset in enumerate(offsets):
                 if i < len(offsets) - 1:
-                    addr = self._pm.read_longlong(addr + offset)
+                    # Read the next address in the chain
+                    next_addr = self._read_memory(addr + offset, 8, 'longlong')
+                    if next_addr is None:
+                        logging.warning(f"Failed to read pointer offset for '{path_key}' at {hex(addr + offset)}.")
+                        return None
+                    addr = next_addr
                 else:
+                    # Final address is base + last offset
                     addr = addr + offset
             return addr
         except Exception as e:
@@ -176,11 +207,11 @@ class MemoryClient:
 
     def read_player_hp(self) -> float:
         addr = self._resolve_pointer_path("PlayerHP")
-        if not addr or not self._pm: return 0.0
+        if not addr: return 0.0
         try:
-            current_hp = self._pm.read_int(addr)
-            max_hp = self._pm.read_int(addr + 4)
-            if max_hp <= 0: return 0.0
+            current_hp = self._read_memory(addr, 4, 'int')
+            max_hp = self._read_memory(addr + 4, 4, 'int')
+            if current_hp is None or max_hp is None or max_hp <= 0: return 0.0
             return max(0.0, min(1.0, current_hp / max_hp))
         except Exception as e:
             logging.error(f"Error reading player HP: {e}")
@@ -188,11 +219,11 @@ class MemoryClient:
 
     def read_player_stamina(self) -> float:
         addr = self._resolve_pointer_path("PlayerSP")
-        if not addr or not self._pm: return 0.0
+        if not addr: return 0.0
         try:
-            current_sp = self._pm.read_int(addr)
-            max_sp = self._pm.read_int(addr + 4)
-            if max_sp <= 0: return 0.0
+            current_sp = self._read_memory(addr, 4, 'int')
+            max_sp = self._read_memory(addr + 4, 4, 'int')
+            if current_sp is None or max_sp is None or max_sp <= 0: return 0.0
             return max(0.0, min(1.0, current_sp / max_sp))
         except Exception as e:
             logging.error(f"Error reading player stamina: {e}")
@@ -200,25 +231,25 @@ class MemoryClient:
 
     def read_player_position(self) -> Tuple[float, float, float]:
         addr = self._resolve_pointer_path('PlayerXYZA')
-        if addr and self._pm:
-            try:
-                x = self._pm.read_float(addr + 0x0)
-                y = self._pm.read_float(addr + 0x4)
-                z = self._pm.read_float(addr + 0x8)
-                return (x, y, z)
-            except Exception as e:
-                logging.error(f"Error reading player position: {e}")
-                return (0.0, 0.0, 0.0)
-        return (0.0, 0.0, 0.0)
+        if not addr: return (0.0, 0.0, 0.0)
+        try:
+            x = self._read_memory(addr + 0x0, 4, 'float')
+            y = self._read_memory(addr + 0x4, 4, 'float')
+            z = self._read_memory(addr + 0x8, 4, 'float')
+            if x is None or y is None or z is None: return (0.0, 0.0, 0.0)
+            return (x, y, z)
+        except Exception as e:
+            logging.error(f"Error reading player position: {e}")
+            return (0.0, 0.0, 0.0)
 
     def _write_last_grace(self, grace_id: int):
         addr = self._resolve_pointer_path('LastGrace')
-        if addr and self._pm:
-            try:
-                self._pm.write_int(addr, grace_id)
-                logging.info(f"Set Last Grace to ID: {grace_id} at address {hex(addr)}")
-            except Exception as e:
-                logging.error(f"Failed to write Last Grace: {e}")
+        if not addr: return
+        try:
+            self._pm.write_int(addr, grace_id)
+            logging.info(f"Set Last Grace to ID: {grace_id} at address {hex(addr)}")
+        except Exception as e:
+            logging.error(f"Failed to write Last Grace: {e}")
 
     def _execute_teleport(self, x: float, y: float, z: float, cos: float, sin: float, map_id: int):
         if not self._pm: return
@@ -230,12 +261,9 @@ class MemoryClient:
         
         logging.info(f"Attempting to call teleport function at {hex(teleport_func_addr)}")
 
-        # Buffer format: x, y, z, cos, sin, map_id
-        coord_buffer = self._pm.allocate(24) # 3 floats + 1 float + 1 float + 1 uint
+        coord_buffer = self._pm.allocate(24)
         self._pm.write_bytes(coord_buffer, struct.pack('fffffI', x, y, z, cos, sin, map_id), 24)
 
-        # Shellcode to call the teleport function
-        # Assuming TeleportFunction takes (x, y, z, cos, sin, map_id) as arguments directly.
         shellcode = bytes([
             0x48, 0xB9, # MOV RCX, coord_buffer
         ]) + struct.pack('<Q', coord_buffer) + bytes([
@@ -259,13 +287,6 @@ class MemoryClient:
             self._pm.free(coord_buffer)
 
     def warp(self, bonfire_name_or_id: Any) -> bool:
-        """
-        Initiates a warp to a specified bonfire.
-        Args:
-            bonfire_name_or_id: The name (string) or ID (int) of the bonfire.
-        Returns:
-            True if the warp was initiated, False otherwise.
-        """
         if not self.attached or not self._pm:
             logging.error("Cannot warp, not attached to game.")
             return False
@@ -282,53 +303,45 @@ class MemoryClient:
 
         logging.info(f"Initiating warp to bonfire ID: {target_bonfire_id}")
 
-        # 1. Find LuaWarp_01 address using AOB
-        lua_warp_aob = "C3 ?? ?? ???????? 57 48 83 EC ?? 48 8B FA 44" # From Warp_code_TGA_dependency.CEA
+        lua_warp_aob = "C3 ?? ?? ???????? 57 48 83 EC ?? 48 8B FA 44"
         lua_warp_addr = self._scan_aob(lua_warp_aob)
         if not lua_warp_addr:
             logging.error("Could not find LuaWarp_01 address via AOB scan.")
             return False
-        lua_warp_addr += 2 # As per the CEA script
+        lua_warp_addr += 2
 
-        # 2. Get CSLuaEventManager, Proxy, and ScriptImitation addresses
         cs_lua_event_manager_addr = self._bases_static.get("CSLuaEventManager")
         if not cs_lua_event_manager_addr:
             logging.error("CSLuaEventManager address not resolved.")
             return False
         
         try:
-            cs_lua_event_proxy = self._pm.read_longlong(cs_lua_event_manager_addr + 0x08)
-            cs_lua_event_script_imitation = self._pm.read_longlong(cs_lua_event_manager_addr + 0x18)
+            cs_lua_event_proxy = self._read_memory(cs_lua_event_manager_addr + 0x08, 8, 'longlong')
+            cs_lua_event_script_imitation = self._read_memory(cs_lua_event_manager_addr + 0x18, 8, 'longlong')
         except Exception as e:
             logging.error(f"Failed to read CSLuaEventManager pointers: {e}")
             return False
 
-        if not cs_lua_event_proxy or not cs_lua_event_script_imitation:
+        if cs_lua_event_proxy is None or cs_lua_event_script_imitation is None:
             logging.error("Failed to get CSLuaEventProxy or CSLuaEventScriptImitation.")
             return False
 
-        # 3. Prepare arguments for the warp function
         warp_id_arg = target_bonfire_id - 1000
 
-        # 4. Construct and execute shellcode to call the warp function
-        # Allocate memory for arguments
-        args_buffer = self._pm.allocate(24) # 3 arguments: 8 bytes each (pointers/long long)
-        
-        # Write arguments to the buffer
-        self._pm.write_bytes(args_buffer, struct.pack('<Q', cs_lua_event_script_imitation), 8) # RCX
-        self._pm.write_bytes(args_buffer + 8, struct.pack('<Q', cs_lua_event_proxy), 8)       # RDX
-        self._pm.write_bytes(args_buffer + 16, struct.pack('<Q', warp_id_arg), 8)            # R8
+        args_buffer = self._pm.allocate(24)
+        self._pm.write_bytes(args_buffer, struct.pack('<Q', cs_lua_event_script_imitation), 8)
+        self._pm.write_bytes(args_buffer + 8, struct.pack('<Q', cs_lua_event_proxy), 8)
+        self._pm.write_bytes(args_buffer + 16, struct.pack('<Q', warp_id_arg), 8)
 
-        # Shellcode to call the function with arguments from the buffer
         shellcode = bytes([
-            0x48, 0x83, 0xEC, 0x28, # SUB RSP, 0x28 (stack space for arguments if needed, adjust as necessary)
-            0x49, 0xBE, # MOV R14, args_buffer
+            0x48, 0x83, 0xEC, 0x28,
+            0x49, 0xBE,
         ]) + struct.pack('<Q', args_buffer) + bytes([
-            0x48, 0xB8, # MOV RAX, lua_warp_addr
+            0x48, 0xB8,
         ]) + struct.pack('<Q', lua_warp_addr) + bytes([
-            0xFF, 0xD0, # CALL RAX
-            0x48, 0x83, 0xC4, 0x28, # ADD RSP, 0x28 (clean up stack)
-            0xC3        # RET
+            0xFF, 0xD0,
+            0x48, 0x83, 0xC4, 0x28,
+            0xC3
         ])
 
         shellcode_addr = self._pm.allocate(len(shellcode))
@@ -357,7 +370,6 @@ class MemoryClient:
             logging.error(f"No metadata found for arena ID: {arena_id}. Cannot reset.")
             return
 
-        # 1. Set Bonfire Context
         bonfire_key = meta_entry.get('nearest_bonfire_key')
         if not bonfire_key:
             logging.error(f"Arena {arena_id} has no 'nearest_bonfire_key'. Cannot set context.")
@@ -368,7 +380,6 @@ class MemoryClient:
             logging.error(f"Bonfire key '{bonfire_key}' not found in bonfires.yaml.")
             return
             
-        # 2. Check Current Location and Warp if Necessary
         current_grace_id = self.read_last_grace()
         
         if current_grace_id != target_bonfire_id:
@@ -377,14 +388,12 @@ class MemoryClient:
                 logging.error("Warp initiation failed. Cannot proceed with reset.")
                 return
             
-            # 3. Wait for Load
             logging.info("Waiting for warp to complete (loading screen)...")
-            time.sleep(10) # Adjust this sleep duration as needed for loading times
+            time.sleep(10)
             logging.info("Finished waiting for warp.")
         else:
             logging.info(f"Already at the correct bonfire ID: {target_bonfire_id}. No warp needed.")
 
-        # 4. Final Local Teleport to precise arena starting coordinates
         spawn = meta_entry.get('player_spawn', {})
         x, y, z = spawn.get('x', 0.0), spawn.get('y', 0.0), spawn.get('z', 0.0)
         cos, sin = spawn.get('cos', 1.0), spawn.get('sin', 0.0)
@@ -396,7 +405,6 @@ class MemoryClient:
 
         self._execute_teleport(x, y, z, cos, sin, map_id)
 
-        # 5. Set Boss Target
         self._boss_param_id = meta_entry.get('boss', {}).get('char_param_id')
         if isinstance(self._boss_param_id, str) and ':' in self._boss_param_id:
             self._boss_param_id = int(self._boss_param_id.split(':')[0])
@@ -406,15 +414,10 @@ class MemoryClient:
         self._boss_last_resolve = 0.0
 
     def read_last_grace(self) -> int:
-        """Reads the current LastGrace ID from memory."""
         addr = self._resolve_pointer_path('LastGrace')
-        if addr and self._pm:
-            try:
-                return self._pm.read_int(addr)
-            except Exception as e:
-                logging.error(f"Failed to read LastGrace: {e}")
-                return -1 # Indicate an error or unknown state
-        return -1 # Indicate an error or unknown state
+        if not addr: return -1
+        grace_id = self._read_memory(addr, 4, 'int')
+        return grace_id if grace_id is not None else -1
 
     def read_boss_hp(self) -> float:
         if not self.attached: return 1.0
@@ -425,10 +428,10 @@ class MemoryClient:
 
         if self._boss_stats_addr and self._pm:
             try:
-                cur = self._pm.read_int(self._boss_stats_addr)
-                mxx = self._pm.read_int(self._boss_stats_addr + 4)
-                if mxx > 0:
-                    return max(0.0, min(1.0, float(cur) / float(mxx)))
+                cur = self._read_memory(self._boss_stats_addr, 4, 'int')
+                mxx = self._read_memory(self._boss_stats_addr + 4, 4, 'int')
+                if cur is None or mxx is None or mxx <= 0: return 1.0
+                return max(0.0, min(1.0, float(cur) / float(mxx)))
             except Exception:
                 pass
         return 1.0
@@ -438,36 +441,36 @@ class MemoryClient:
         
         base_addr = self._bases_static.get('WorldChrMan')
         if not base_addr: return
-        wcm_ptr = self._pm.read_longlong(self._pm.base_address + base_addr)
+        wcm_ptr = self._read_memory(self._pm.base_address + base_addr, 8, 'longlong')
         if not wcm_ptr: return
 
         try:
-            begin = self._pm.read_longlong(wcm_ptr + self._wcm_offsets['character_list_begin_off'])
-            end = self._pm.read_longlong(wcm_ptr + self._wcm_offsets['character_list_end_off'])
-            if not (begin and end and end > begin): return
+            begin = self._read_memory(wcm_ptr + self._wcm_offsets['character_list_begin_off'], 8, 'longlong')
+            end = self._read_memory(wcm_ptr + self._wcm_offsets['character_list_end_off'], 8, 'longlong')
+            if begin is None or end is None or end <= begin: return
 
             logging.info(f"Scanning for boss with Param ID {self._boss_param_id}...")
             p = begin
             count = 0
             while p < end:
                 count += 1
-                ent = self._pm.read_longlong(p)
+                ent = self._read_memory(p, 8, 'longlong')
                 p += 8
-                if not ent or ent < 0x10000: continue
+                if ent is None or ent < 0x10000: continue
                 
-                pid = self._pm.read_int(ent + 0x60)
+                pid = self._read_memory(ent + 0x60, 4, 'int')
                 if pid != self._boss_param_id: continue
                 
                 logging.info(f"!!! Found boss with matching PID at entity address {hex(ent)} after {count} scans.")
-                comp = self._pm.read_longlong(ent + self._char_offsets['comp_190_off'])
+                comp = self._read_memory(ent + self._char_offsets['comp_190_off'], 8, 'longlong')
                 if not comp: continue
                 
-                stats = self._pm.read_longlong(comp + self._char_offsets['stats_qword_off'])
+                stats = self._read_memory(comp + self._char_offsets['stats_qword_off'], 8, 'longlong')
                 if stats:
                     self._boss_stats_addr = stats
                     logging.info(f"Resolved boss stats address to {hex(stats)}")
                     self._boss_comp_addr = comp
-                    self._boss_transform_addr = self._pm.read_longlong(comp + self._char_offsets['transform_68_off'])
+                    self._boss_transform_addr = self._read_memory(comp + self._char_offsets['transform_68_off'], 8, 'longlong')
                     return
             logging.warning(f"Finished scanning {count} entities. Boss not found.")
         except Exception as e:
@@ -477,9 +480,10 @@ class MemoryClient:
         if not self._pm or not self._boss_transform_addr: return None
         try:
             addr = self._boss_transform_addr + self._char_offsets['pos_xyz_off']
-            x = self._pm.read_float(addr)
-            y = self._pm.read_float(addr + 4)
-            z = self._pm.read_float(addr + 8)
+            x = self._read_memory(addr, 4, 'float')
+            y = self._read_memory(addr + 4, 4, 'float')
+            z = self._read_memory(addr + 8, 4, 'float')
+            if x is None or y is None or z is None: return None
             return (x, y, z)
         except Exception as e:
             logging.error(f"Error reading boss position: {e}")
