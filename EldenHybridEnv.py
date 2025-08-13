@@ -47,6 +47,8 @@ class EldenHybridEnv(gym.Env):
         self.DESIRED_FPS = float(config.get("DESIRED_FPS", 24))
         self.LOG_MEMORY_DEBUG = bool(config.get("LOG_MEMORY_DEBUG", False))
         self.MEMORY_DEBUG_INTERVAL = int(config.get("MEMORY_DEBUG_INTERVAL", 1))
+        self.MONITOR = int(config.get("MONITOR", 1))
+        self.DEBUG_MODE = bool(config.get("DEBUG_MODE", False))
 
         # For debug overlay
         self.font = cv2.FONT_HERSHEY_SIMPLEX
@@ -54,7 +56,6 @@ class EldenHybridEnv(gym.Env):
         self.font_color = (255, 255, 255)
         self.line_type = 2
 
-        # Discrete action space compatible with original env
         self.NUMBER_DISCRETE_ACTIONS = int(config.get("NUMBER_DISCRETE_ACTIONS", 22))
         self.action_space = spaces.Discrete(self.NUMBER_DISCRETE_ACTIONS)
         self.observation_space = spaces.Dict(
@@ -71,7 +72,13 @@ class EldenHybridEnv(gym.Env):
         self.mem = MemoryClient(
             process_name=config.get("PROCESS_NAME", "eldenring.exe")
         )
-        logging.info("MemoryClient initialized.")
+        
+        # Attempt to attach and resolve essential addresses immediately
+        if not self.mem.attach():
+            logging.error("Failed to attach to Elden Ring process or resolve essential memory addresses. Please ensure the game is running and the configuration is correct.")
+            raise RuntimeError("Failed to initialize MemoryClient.")
+        logging.info("MemoryClient initialized and attached.")
+
         self.rewardGen = EldenRewardMemory(config)
         self.input = InputController(enabled=not bool(config.get("DISABLE_INPUT", False)))
 
@@ -83,12 +90,24 @@ class EldenHybridEnv(gym.Env):
         self.first_step = True
         self.curr_phase = 1.0
 
-        # Attach early
-        self.mem.attach()
+        # Check if essential memory addresses are resolved after attachment
+        if not self._check_essential_addresses():
+            raise RuntimeError("Essential memory addresses could not be resolved. Cannot proceed.")
 
-        # Required for screenshot cropping
-        self.MONITOR = int(config.get("MONITOR", 1))
-        self.DEBUG_MODE = bool(config.get("DEBUG_MODE", False))
+    def _check_essential_addresses(self) -> bool:
+        """Checks if critical memory addresses are resolved."""
+        if not self.mem.attached:
+            logging.error("MemoryClient is not attached.")
+            return False
+        
+        # Check for addresses that are critical for basic operation
+        critical_addresses = ["WorldChrMan", "CSLuaEventManager", "PlayerHP", "PlayerSP", "PlayerXYZA"]
+        for addr_key in critical_addresses:
+            if self.mem._resolve_pointer_path(addr_key) is None:
+                logging.error(f"Critical address '{addr_key}' could not be resolved.")
+                return False
+        logging.info("All essential memory addresses resolved successfully.")
+        return True
 
     # ----- Helpers -----
     def _one_hot_prev_actions(self):
@@ -134,6 +153,17 @@ class EldenHybridEnv(gym.Env):
 
         # Read memory state and compute reward for previous transition
         hp, stam, boss_hp, dist, time_alive, phase = self._read_state()
+        
+        # Check if game state is valid before calculating reward/processing action
+        if hp is None or stam is None or boss_hp is None:
+            logging.error("Failed to read critical game state. Terminating episode.")
+            # Return a terminal state with no reward
+            return {
+                "img": np.zeros((MODEL_HEIGHT, MODEL_WIDTH, N_CHANNELS), dtype=np.uint8),
+                "prev_actions": np.zeros((N_ACTIONS_HISTORY, self.NUMBER_DISCRETE_ACTIONS, 1), dtype=np.uint8),
+                "state": np.zeros(6, dtype=np.float32),
+            }, 0.0, True, False, {}
+
         reward, death, boss_death, duel_won = self.rewardGen.update(
             hp, stam, boss_hp, self.first_step
         )
@@ -185,29 +215,41 @@ class EldenHybridEnv(gym.Env):
 
     def reset(self, *, seed: int | None = None, options: Dict[str, Any] | None = None):
         super().reset(seed=seed)
-        if not self.mem.attached:
-            self.mem.attach()
+        
+        # Ensure MemoryClient is attached and essential addresses are resolved
+        if not self.mem.attached or not self._check_essential_addresses():
+            logging.error("MemoryClient not attached or essential addresses not resolved. Cannot reset.")
+            # Return a default state to prevent further errors, but training should ideally stop.
+            return {
+                "img": np.zeros((MODEL_HEIGHT, MODEL_WIDTH, N_CHANNELS), dtype=np.uint8),
+                "prev_actions": np.zeros((N_ACTIONS_HISTORY, self.NUMBER_DISCRETE_ACTIONS, 1), dtype=np.uint8),
+                "state": np.zeros(6, dtype=np.float32),
+            }, {}
 
         # Memory-based instant reset
         self.mem.reset_arena(self.BOSS, second_phase=False)
         
-        # --- Robust Reset Logic ---
         # Give the game a moment to load after teleport
         logging.info("Waiting for game to load after teleport...")
         time.sleep(2.0) 
 
-        # Attempt to get a valid state, retrying if boss isn't loaded yet
-        max_retries = 5
+        # Attempt to get a valid state, failing fast if boss isn't loaded yet
+        max_retries = 3 # Reduced retries as we want to fail fast
         for i in range(max_retries):
             hp, stam, boss_hp, dist, time_alive, phase = self._read_state()
-            if boss_hp < 1.0:
+            if boss_hp is not None and boss_hp < 1.0: # Check for valid boss HP
                 logging.info(f"Successfully read initial boss HP: {boss_hp:.3f}. Proceeding with reset.")
                 break
-            logging.warning(f"Boss HP not yet resolved (is 1.0). Retrying in 1s... ({i+1}/{max_retries})")
+            logging.warning(f"Boss HP not yet resolved (is {boss_hp}). Retrying in 1s... ({i+1}/{max_retries})")
             time.sleep(1.0)
         else:
             logging.error("Failed to resolve boss HP after multiple retries. Reset may be unstable.")
-        # --- End Robust Reset Logic ---
+            # Return a default state if boss HP is still not resolved
+            return {
+                "img": np.zeros((MODEL_HEIGHT, MODEL_WIDTH, N_CHANNELS), dtype=np.uint8),
+                "prev_actions": np.zeros((N_ACTIONS_HISTORY, self.NUMBER_DISCRETE_ACTIONS, 1), dtype=np.uint8),
+                "state": np.zeros(6, dtype=np.float32),
+            }, {}
 
         self.time_alive_ref = time.time()
         self.curr_phase = 1.0
@@ -234,5 +276,3 @@ class EldenHybridEnv(gym.Env):
     def close(self):
         self.mem.detach()
         cv2.destroyAllWindows()
-
-
