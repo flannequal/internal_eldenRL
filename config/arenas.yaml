@@ -19,5 +19,5 @@ arenas:
     boss:
       char_param_id: 39701910:Azula Beastman
     second_phase:
-      trigger_flag_addr: null # fill when known
+      trigger_flag_addr: null
     notes: "Fill spawn coords in coordinates.yaml; verify addresses per version."
