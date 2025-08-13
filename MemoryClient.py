@@ -65,8 +65,9 @@ class MemoryClient:
         for name, value in addresses_yaml.get('bases_static', {}).items():
             if isinstance(value, str) and value.startswith("AOB"):
                 self._aob_scans[name] = value
-            elif isinstance(value, (int, str)):
+            elif isinstance(value, (int, str)): # Handle potential string representations of hex
                 try:
+                    # Ensure value is treated as a string before converting to int with base 16
                     self._bases_static[name] = int(str(value), 16)
                 except ValueError:
                     logging.warning(f"Could not convert '{value}' to a base address for '{name}'.")
