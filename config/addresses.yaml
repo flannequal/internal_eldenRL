@@ -8,6 +8,7 @@ bases_static:
   TeleportFunction: 0x1337040
   WarpFunction: 0x3E213247     
   WarpLocation: 0x3E213247  #data location of all locations (sites of grace) to warp to
+  CSLuaEventManager: "48 83 3D ?? ?? ?? ?? 00 48 8B F9 0F 84 ?? ?? ?? ?? 48" # AOB for CSLuaEventManager
 
 addresses:
   PlayerHP:
