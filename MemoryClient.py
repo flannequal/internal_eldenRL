@@ -109,9 +109,9 @@ class MemoryClient:
                     if resolved_addr:
                         self._bases_static[name] = resolved_addr
             
-            # Check if essential bases are resolved
-            if not self._bases_static.get('WorldChrMan') or not self._bases_static.get('CSLuaEventManager'):
-                logging.error("Failed to resolve essential base addresses (WorldChrMan or CSLuaEventManager). Detaching.")
+            # Check if essential bases are resolved immediately after attachment and AOB scans
+            if not self._check_essential_addresses():
+                logging.error("Failed to resolve essential base addresses after attachment. Detaching.")
                 self.detach()
                 return False
 
@@ -122,6 +122,20 @@ class MemoryClient:
         except Exception as e:
             logging.error(f"Failed to attach to process: {e}")
             return False
+
+    def _check_essential_addresses(self) -> bool:
+        """Checks if critical memory addresses are resolved."""
+        if not self.attached:
+            logging.error("MemoryClient is not attached.")
+            return False
+        
+        critical_addresses = ["WorldChrMan", "CSLuaEventManager", "PlayerHP", "PlayerSP", "PlayerXYZA"]
+        for addr_key in critical_addresses:
+            if self._resolve_pointer_path(addr_key) is None:
+                logging.error(f"Critical address '{addr_key}' could not be resolved.")
+                return False
+        logging.info("All essential memory addresses resolved successfully.")
+        return True
 
     def detach(self) -> None:
         if self._pm:
@@ -191,56 +205,54 @@ class MemoryClient:
             
             for i, offset in enumerate(offsets):
                 if i < len(offsets) - 1:
-                    # Read the next address in the chain
                     next_addr = self._read_memory(addr + offset, 8, 'longlong')
                     if next_addr is None:
                         logging.warning(f"Failed to read pointer offset for '{path_key}' at {hex(addr + offset)}.")
                         return None
                     addr = next_addr
                 else:
-                    # Final address is base + last offset
                     addr = addr + offset
             return addr
         except Exception as e:
             logging.error(f"Error resolving pointer path for '{path_key}': {e}")
             return None
 
-    def read_player_hp(self) -> float:
+    def read_player_hp(self) -> Optional[float]:
         addr = self._resolve_pointer_path("PlayerHP")
-        if not addr: return 0.0
+        if not addr: return None
         try:
             current_hp = self._read_memory(addr, 4, 'int')
             max_hp = self._read_memory(addr + 4, 4, 'int')
-            if current_hp is None or max_hp is None or max_hp <= 0: return 0.0
+            if current_hp is None or max_hp is None or max_hp <= 0: return None
             return max(0.0, min(1.0, current_hp / max_hp))
         except Exception as e:
             logging.error(f"Error reading player HP: {e}")
-            return 0.0
+            return None
 
-    def read_player_stamina(self) -> float:
+    def read_player_stamina(self) -> Optional[float]:
         addr = self._resolve_pointer_path("PlayerSP")
-        if not addr: return 0.0
+        if not addr: return None
         try:
             current_sp = self._read_memory(addr, 4, 'int')
             max_sp = self._read_memory(addr + 4, 4, 'int')
-            if current_sp is None or max_sp is None or max_sp <= 0: return 0.0
+            if current_sp is None or max_sp is None or max_sp <= 0: return None
             return max(0.0, min(1.0, current_sp / max_sp))
         except Exception as e:
             logging.error(f"Error reading player stamina: {e}")
-            return 0.0
+            return None
 
-    def read_player_position(self) -> Tuple[float, float, float]:
+    def read_player_position(self) -> Optional[Tuple[float, float, float]]:
         addr = self._resolve_pointer_path('PlayerXYZA')
-        if not addr: return (0.0, 0.0, 0.0)
+        if not addr: return None
         try:
             x = self._read_memory(addr + 0x0, 4, 'float')
             y = self._read_memory(addr + 0x4, 4, 'float')
             z = self._read_memory(addr + 0x8, 4, 'float')
-            if x is None or y is None or z is None: return (0.0, 0.0, 0.0)
+            if x is None or y is None or z is None: return None
             return (x, y, z)
         except Exception as e:
             logging.error(f"Error reading player position: {e}")
-            return (0.0, 0.0, 0.0)
+            return None
 
     def _write_last_grace(self, grace_id: int):
         addr = self._resolve_pointer_path('LastGrace')
@@ -419,8 +431,8 @@ class MemoryClient:
         grace_id = self._read_memory(addr, 4, 'int')
         return grace_id if grace_id is not None else -1
 
-    def read_boss_hp(self) -> float:
-        if not self.attached: return 1.0
+    def read_boss_hp(self) -> Optional[float]:
+        if not self.attached: return None
         now = time.time()
         if not self._boss_stats_addr and (now - self._boss_last_resolve > self._boss_resolve_retry_sec):
             self._boss_last_resolve = now
@@ -430,11 +442,11 @@ class MemoryClient:
             try:
                 cur = self._read_memory(self._boss_stats_addr, 4, 'int')
                 mxx = self._read_memory(self._boss_stats_addr + 4, 4, 'int')
-                if cur is None or mxx is None or mxx <= 0: return 1.0
+                if cur is None or mxx is None or mxx <= 0: return None
                 return max(0.0, min(1.0, float(cur) / float(mxx)))
             except Exception:
                 pass
-        return 1.0
+        return None
 
     def _resolve_boss_stats_address(self) -> None:
         if not self._pm or not self._boss_param_id: return
