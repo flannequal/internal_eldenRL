@@ -7,15 +7,17 @@ process_name: eldenring.exe
 arenas:
   - id: 8
     name: Beastman
-    map: Crumbling Farum Azula
-    nearest_bonfire_key: "Crumbling Farum Azula - Dragon Temple"
+    map_id: 1F030000
+    map: Limgrave
+    nearest_bonfire_key: "Groveside Cave"
+    player_spawn:
+      x: -3.797457933
+      y: -7.21598196
+      z: 2.266977549
+      cos: 0.8843095303
+      sin: 0.4669010937
+    boss:
+      char_param_id: 39701910:Azula Beastman
     second_phase:
       trigger_flag_addr: null # fill when known
     notes: "Fill spawn coords in coordinates.yaml; verify addresses per version."
-
-  - id: 1
-    name: Template Boss
-    map: Unknown
-    nearest_bonfire_key: ""
-    second_phase: { trigger_flag_addr: null }
-    notes: "Template entry."

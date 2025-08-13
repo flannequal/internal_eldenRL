@@ -1,5 +1,0 @@
-# Player stats and scaling (optional reference)
-# Copy to config/player_stats.yaml and adjust to your character.
-
-PLAYER_HP: 2140
-PLAYER_STAMINA: 118

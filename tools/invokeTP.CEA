@@ -1,0 +1,51 @@
+[ENABLE]
+{$lua}
+
+function disableSelf(sender)
+  sender.destroy()
+  local addr=getAddressList().getMemoryRecordByDescription("InvokeTP")
+  memoryrecord_unfreeze(addr)
+end
+
+local t=createTimer(nil)
+t.OnTimer=disableSelf
+t.Interval=1
+t.Enabled=true
+
+
+if syntaxcheck then return end
+
+-- Find address!
+local x = readFloat("TPData")
+local z = readFloat("TPData+4")
+local y = readFloat("TPData+8")
+
+local xPtrTp = "[[[[[WorldChrMan]+10EF8]+0]+190]+68]+70"
+local zPtrTp = "[[[[[WorldChrMan]+10EF8]+0]+190]+68]+74"
+local yPtrTp = "[[[[[WorldChrMan]+10EF8]+0]+190]+68]+78"
+
+local xGlobalPtr = "[[[[[[NetManImp]+ 80]+ E0] + 80] + 20] + 98] + 28"
+local zGlobalPtr = "[[[[[[NetManImp]+ 80]+ E0] + 80] + 20] + 98] + 1C"
+local yGlobalPtr = "[[[[[[NetManImp]+ 80]+ E0] + 80] + 20] + 98] + 2C"
+
+local gravityPtr = "[[[[[WorldChrMan]+10EF8]+0]+190]+68]+1D3" -- Nogravity
+writeInteger(gravityPtr, 1)
+
+-- Calculate
+xNew = x - (readFloat(xGlobalPtr) - readFloat(xPtrTp))
+zNew = z - (readFloat(zGlobalPtr) - readFloat(zPtrTp))
+yNew = (y - (readFloat(yGlobalPtr) + readFloat(yPtrTp))) * -1
+
+writeFloat(xPtrTp, xNew)
+writeFloat(zPtrTp, zNew)
+writeFloat(yPtrTp, yNew)
+
+
+[DISABLE]
+
+
+{$lua}
+if syntaxcheck then return end
+local gravityPtr = "[[[[[WorldChrMan]+10EF8]+0]+190]+68]+1D3"
+writeInteger(gravityPtr, 0)
+
