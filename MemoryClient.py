@@ -57,9 +57,24 @@ class MemoryClient:
             self._bonfires_db = {str(k): int(v) for k, v in bonfire_data.items()}
 
         addresses_yaml = self._safe_load_yaml(os.path.join('config', 'addresses.yaml'))
+        
+        # Correctly parse the 'addresses' dictionary
         self._addresses = addresses_yaml.get('addresses', {})
-        self._bases_static = {k: int(str(v), 16) for k, v in addresses_yaml.get('bases_static', {}).items() if isinstance(v, (int, str)) and not isinstance(v, str) or not v.startswith("AOB")}
-        self._aob_scans = {k: v for k, v in addresses_yaml.get('bases_static', {}).items() if isinstance(v, str) and v.startswith("AOB")}
+        
+        # Process bases_static, separating static addresses from AOB patterns
+        self._bases_static = {}
+        self._aob_scans = {}
+        for name, value in addresses_yaml.get('bases_static', {}).items():
+            if isinstance(value, str) and value.startswith("AOB"):
+                self._aob_scans[name] = value
+            elif isinstance(value, (int, str)): # Handle potential string representations of hex
+                try:
+                    self._bases_static[name] = int(str(value), 16)
+                except ValueError:
+                    logging.warning(f"Could not convert '{value}' to a base address for '{name}'.")
+            else:
+                logging.warning(f"Unexpected type for base address '{name}': {type(value)}")
+
         self._wcm_offsets = {k: int(str(v), 16) for k, v in addresses_yaml.get('worldchrman', {}).items()}
         self._char_offsets = {k: int(str(v), 16) for k, v in addresses_yaml.get('character', {}).items()}
         logging.info("Finished loading memory configurations.")
@@ -67,13 +82,6 @@ class MemoryClient:
     def _scan_aob(self, aob_pattern: str) -> Optional[int]:
         if not self.attached or not self._pm: return None
         try:
-            # Remove spaces and convert to bytes
-            aob_bytes = bytes.fromhex(aob_pattern.replace(" ", ""))
-            # pymem's pattern scanner expects a specific format, let's assume it's handled internally or we adapt
-            # For simplicity, let's assume a direct AOB scan function exists or we adapt the pattern
-            # A common way is to convert to a format like "48 83 3D ?? ?? ?? ?? 00"
-            
-            # Let's try a simple adaptation for pymem's find_pattern
             # pymem expects a pattern string like "48 83 3D ?? ?? ?? ?? 00"
             pymem_pattern = " ".join(aob_pattern.split())
             
@@ -98,10 +106,12 @@ class MemoryClient:
             self.attached = True
             logging.info(f"Successfully attached to process '{self.process_name}' (PID: {self._pm.process_id}).")
             
-            # Perform AOB scans on attach
+            # Perform AOB scans on attach and cache results
             for name, aob in self._aob_scans.items():
                 if name not in self._bases_static: # Only scan if not already a static address
-                    self._bases_static[name] = self._scan_aob(aob)
+                    resolved_addr = self._scan_aob(aob)
+                    if resolved_addr:
+                        self._bases_static[name] = resolved_addr
             
             return True
         except pymem.exception.ProcessNotFound:
@@ -131,13 +141,10 @@ class MemoryClient:
                 return None
 
             base_addr = self._bases_static.get(base_key)
-            if base_addr is None:
-                logging.warning(f"Base address for '{base_key}' not resolved.")
-                return None
             
-            # If base_addr is actually an AOB pattern string that hasn't been resolved yet
-            if isinstance(base_addr, str) and base_addr.startswith("AOB"):
-                resolved_addr = self._scan_aob(base_addr)
+            # If base_addr is not yet resolved (e.g., it's an AOB pattern)
+            if base_addr is None and base_key in self._aob_scans:
+                resolved_addr = self._scan_aob(self._aob_scans[base_key])
                 if resolved_addr is None:
                     logging.warning(f"Failed to resolve AOB base for '{base_key}'.")
                     return None
@@ -146,6 +153,7 @@ class MemoryClient:
             
             # If base_addr is still None after potential AOB scan, return None
             if base_addr is None:
+                logging.warning(f"Base address for '{base_key}' could not be resolved.")
                 return None
 
             # If it's a direct address (not a pointer chain)
@@ -227,14 +235,7 @@ class MemoryClient:
         self._pm.write_bytes(coord_buffer, struct.pack('fffffI', x, y, z, cos, sin, map_id), 24)
 
         # Shellcode to call the teleport function
-        # Arguments: CSLuaEventScriptImitation, CSLuaEventProxy, warpId-1000
-        # For teleport, the arguments are likely different. Based on the .CEA script, it seems to be:
-        # executeCodeEx(0, 100, LuaWarp_01, CSLuaEventScriptImitation, CSLuaEventProxy, warpId-1000)
-        # This implies a specific calling convention. For a direct function call, we need to know its signature.
         # Assuming TeleportFunction takes (x, y, z, cos, sin, map_id) as arguments directly.
-        
-        # Let's construct a shellcode that calls TeleportFunction with the packed coordinates.
-        # This is a simplified assumption. A more accurate shellcode would depend on the exact function signature.
         shellcode = bytes([
             0x48, 0xB9, # MOV RCX, coord_buffer
         ]) + struct.pack('<Q', coord_buffer) + bytes([
@@ -306,20 +307,10 @@ class MemoryClient:
             logging.error("Failed to get CSLuaEventProxy or CSLuaEventScriptImitation.")
             return False
 
-        # 3. Check for DLC bonfire and handle logic (simplified for now)
-        # This part would need more specific DLC handling if required.
-        # For now, we just pass the ID.
-        
-        # 4. Prepare arguments for the warp function
-        # The warp function expects: CSLuaEventScriptImitation, CSLuaEventProxy, warpId - 1000
+        # 3. Prepare arguments for the warp function
         warp_id_arg = target_bonfire_id - 1000
 
-        # 5. Construct and execute shellcode to call the warp function
-        # The shellcode needs to call lua_warp_addr with the arguments.
-        # This is a generic shellcode for calling a function with specific arguments.
-        # The exact assembly might vary based on calling conventions (e.g., x64 calling convention).
-        # For x64, arguments are passed in RCX, RDX, R8, R9.
-        
+        # 4. Construct and execute shellcode to call the warp function
         # Allocate memory for arguments
         args_buffer = self._pm.allocate(24) # 3 arguments: 8 bytes each (pointers/long long)
         
@@ -378,7 +369,7 @@ class MemoryClient:
             return
             
         # 2. Check Current Location and Warp if Necessary
-        current_grace_id = self.read_last_grace() # Need to implement read_last_grace
+        current_grace_id = self.read_last_grace()
         
         if current_grace_id != target_bonfire_id:
             logging.info(f"Current grace ID ({current_grace_id}) does not match target ({target_bonfire_id}). Initiating warp.")
@@ -387,7 +378,6 @@ class MemoryClient:
                 return
             
             # 3. Wait for Load
-            # This is a crucial step. The duration might need tuning.
             logging.info("Waiting for warp to complete (loading screen)...")
             time.sleep(10) # Adjust this sleep duration as needed for loading times
             logging.info("Finished waiting for warp.")

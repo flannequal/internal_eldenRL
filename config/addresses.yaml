@@ -7,62 +7,78 @@ bases_static:
   DamageCtrl: 0x3D66378
   TeleportFunction: 0x1337040
   CSLuaEventManager: "48 83 3D ?? ?? ?? ?? 00 48 8B F9 0F 84 ?? ?? ?? ?? 48" # AOB for CSLuaEventManager
+  WarpFunction: "C3 ?? ?? ???????? 57 48 83 EC ?? 48 8B FA 44" # AOB for LuaWarp_01 (will be resolved and +2 applied)
 
 addresses:
   PlayerHP:
-    { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x138], type: int }
+    base: WorldChrMan
+    offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x138]
+    type: int
   PlayerMaxHP:
-    { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x13C], type: int }
+    base: WorldChrMan
+    offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x13C]
+    type: int
   PlayerSP:
-    { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x154], type: int }
+    base: WorldChrMan
+    offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x154]
+    type: int
   PlayerMaxSP:
-    { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x158], type: int }
+    base: WorldChrMan
+    offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x158]
+    type: int
   PlayerMP:
-    { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x148], type: int }
+    base: WorldChrMan
+    offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x148]
+    type: int
   PlayerMaxMP:
-    { base: WorldChrMan, offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x150], type: int }
+    base: WorldChrMan
+    offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x150]
+    type: int
 
   PlayerXYZA: # Array of bytes for player data. X: +0, Y: +4, Z: +8, Angle: +C, MapID: +10
     base: WorldChrMan
     offsets: [0x10EF8, 0x0, 0x6C0]
-    type: bytes,
-    length: 20,
+    type: bytes
+    length: 20
   PlayerAnimation:
     base: WorldChrMan
     offsets: [0x10EF8, 0x0, 0x190, 0x18, 0x20]
     type: int
   PlayerGravity:
-    base: WorldChrMan,
-    offsets: [0x10EF8, 0x0, 0x190, 0x68, 0x1D3],
-    type: int,
+    base: WorldChrMan
+    offsets: [0x10EF8, 0x0, 0x190, 0x68, 0x1D3]
+    type: int
   AllowPlayerDeath:
-    base: WorldChrMan 
+    base: WorldChrMan
     offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x19B]
-    type: int 
-  LastGrace: 
-    base: GameMan 
+    type: int
+  LastGrace:
+    base: GameMan
     offsets: [0xB30]
     type: int
-  Time: 
+  Time:
     base: GameDataMan
-    offsets: [0xA0] 
+    offsets: [0xA0]
     type: int
   LocalCam:
     base: FieldArea
     offsets: [0x20, 0x18, 0x30]
-    type: bytes, length: 28
+    type: bytes
+    length: 28
   ChunkCamXYZ:
     base: FieldArea
     offsets: [0x20, 0xD0, 0x40]
-    type: bytes, length: 12
-  PlayerStats: 
+    type: bytes
+    length: 12
+  PlayerStats:
     base: GameDataMan
     offsets: [0x08, 0x3C]
     type: int
-  LockOn: 
+  LockOn:
     base: LockTgtMan
     offsets: [0x2831]
-    type: bytes, length: 1
+    type: bytes
+    length: 1
 
 # Helper offsets for list scanning (optional; used for custom boss targeting)
 worldchrman:
