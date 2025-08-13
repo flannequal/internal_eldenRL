@@ -24,6 +24,7 @@ class MemoryClient:
         self.attached = False
         self._last_attach_attempt = 0.0
         self.simulate = simulate
+        self._pm = None
 
         # Try to import SoulsGym Elden Ring interface
         self._sg_game = None
@@ -37,10 +38,13 @@ class MemoryClient:
                 from eldenring import EldenRing  # type: ignore
                 self._sg_game = EldenRing()
                 self._uses_soulsgym = True
+                if hasattr(self._sg_game, '_process'):
+                    self._pm = self._sg_game._process  # type: ignore[attr-defined]
         except Exception:
             # Fallback to minimal internal placeholders when SoulsGym is unavailable
             self._sg_game = None
             self._uses_soulsgym = False
+            self._pm = None
 
         # Cached state for minimal fallback (only used if simulate=True or SoulsGym not loaded)
         self._player_hp = 1.0
@@ -229,7 +233,7 @@ class MemoryClient:
             if self._boss_stats_addr:
                 cur = self._read_int(self._boss_stats_addr)
                 mxx = self._read_int(self._boss_stats_addr + 4)
-                if mxx > 0:
+                if cur is not None and mxx is not None and mxx > 0:
                     self._boss_hp = max(0.0, min(1.0, float(cur) / float(mxx)))
                     return self._boss_hp
             # Resolve target once (or retry after cooldown)
@@ -242,7 +246,7 @@ class MemoryClient:
             if self._boss_stats_addr:
                 cur = self._read_int(self._boss_stats_addr)
                 mxx = self._read_int(self._boss_stats_addr + 4)
-                if mxx > 0:
+                if cur is not None and mxx is not None and mxx > 0:
                     self._boss_hp = max(0.0, min(1.0, float(cur) / float(mxx)))
             return float(self._boss_hp)
         if self.simulate:
@@ -374,6 +378,43 @@ class MemoryClient:
         self._t_reset = time.time()
 
     # ----- Helpers -----
+    def _read_qword(self, addr: int) -> Optional[int]:
+        if self._pm:
+            try:
+                return self._pm.read_longlong(addr)  # type: ignore[attr-defined]
+            except Exception:
+                return None
+        return None
+
+    def _read_int(self, addr: int) -> Optional[int]:
+        if self._pm:
+            try:
+                return self._pm.read_int(addr)  # type: ignore[attr-defined]
+            except Exception:
+                return None
+        return None
+
+    def _read_float(self, addr: int) -> Optional[float]:
+        if self._pm:
+            try:
+                return self._pm.read_float(addr)  # type: ignore[attr-defined]
+            except Exception:
+                return None
+        return None
+
+    def _resolve_base_ptr(self, name: str) -> Optional[int]:
+        if self._pm is None:
+            return None
+        offset = self._bases_static.get(name)
+        if offset is None:
+            return None
+        try:
+            # Assumes single-level pointer from game base
+            base_address = self._pm.base_address  # type: ignore[attr-defined]
+            return self._read_qword(base_address + offset)
+        except Exception:
+            return None
+
     def _resolve_boss_stats_address(self) -> None:
         """Find and cache the boss stats qword address by Param ID. No-op if not found."""
         self._boss_stats_addr = 0
@@ -387,6 +428,8 @@ class MemoryClient:
         if target_param_id is None:
             return
         wcm_ptr = self._resolve_base_ptr('WorldChrMan')
+        if wcm_ptr is None:
+            return
         begin_off = self._wcm_offsets.get('character_list_begin_off', 0x1F1B8)
         end_off = self._wcm_offsets.get('character_list_end_off', 0x1F1C0)
         begin = self._read_qword(wcm_ptr + begin_off)
@@ -429,6 +472,8 @@ class MemoryClient:
         x = self._read_float(addr + 0x70)
         y = self._read_float(addr + 0x74)
         z = self._read_float(addr + 0x78)
+        if x is None or y is None or z is None:
+            return None, None, None
         return float(x), float(y), float(z)
 
     def read_distance_to_boss(self) -> Optional[float]:
