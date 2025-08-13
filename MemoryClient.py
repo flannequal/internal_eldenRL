@@ -4,6 +4,7 @@ import logging
 from typing import Tuple, Optional, Dict, Any
 import yaml
 import pymem
+import pymem.pattern
 import struct
 
 class MemoryClient:
@@ -14,12 +15,14 @@ class MemoryClient:
         self.attached = False
         self._last_attach_attempt = 0.0
         self._pm: Optional[pymem.Pymem] = None
+        self._module = None # Store the module for pattern scanning
 
         # Config caches
         self._arena_meta_db: Dict[int, Dict[str, Any]] = {}
         self._bonfires_db: Dict[str, int] = {}
         self._addresses: Dict[str, Any] = {}
         self._bases_static: Dict[str, int] = {}
+        self._aob_patterns: Dict[str, str] = {} # Store AOB patterns from config
         self._aob_scans: Dict[str, int] = {} # Cache for AOB scan results
         self._wcm_offsets: Dict[str, int] = {}
         self._char_offsets: Dict[str, int] = {}
@@ -61,13 +64,12 @@ class MemoryClient:
         self._addresses = addresses_yaml.get('addresses', {})
         
         self._bases_static = {}
-        self._aob_scans = {}
+        self._aob_patterns = {} # Clear previous AOB patterns
         for name, value in addresses_yaml.get('bases_static', {}).items():
-            if isinstance(value, str) and value.startswith("AOB"):
-                self._aob_scans[name] = value
+            if isinstance(value, str) and value.startswith("AOB:"):
+                self._aob_patterns[name] = value[4:].strip() # Store AOB pattern without "AOB:" prefix
             elif isinstance(value, (int, str)): # Handle potential string representations of hex
                 try:
-                    # Ensure value is treated as a string before converting to int with base 16
                     self._bases_static[name] = int(str(value), 16)
                 except ValueError:
                     logging.warning(f"Could not convert '{value}' to a base address for '{name}'.")
@@ -78,19 +80,34 @@ class MemoryClient:
         self._char_offsets = {k: int(str(v), 16) for k, v in addresses_yaml.get('character', {}).items()}
         logging.info("Finished loading memory configurations.")
 
-    def _scan_aob(self, aob_pattern: str) -> Optional[int]:
-        if not self.attached or not self._pm: return None
+    def _scan_aob(self, aob_pattern_str: str) -> Optional[int]:
+        """Scans for an AOB pattern using pymem.pattern.pattern_scan_module."""
+        if not self.attached or not self._pm or not self._module:
+            logging.warning("Cannot scan AOB: Not attached or module not loaded.")
+            return None
         try:
-            pymem_pattern = " ".join(aob_pattern.split())
-            address = self._pm.pattern(pymem_pattern)
+            # Convert AOB string to bytes, handling wildcards
+            aob_bytes = bytes.fromhex("".join(filter(lambda c: c.isalnum(), aob_pattern_str)))
+            wildcards = [i for i, char in enumerate(aob_pattern_str) if char == '?']
+            
+            # pymem.pattern.pattern_scan_module expects a byte string for the pattern
+            # and a byte string for the mask. 'x' for byte, '?' for wildcard.
+            mask_list = ['x' if i not in wildcards else '?' for i in range(len(aob_bytes))]
+            mask = "".join(mask_list)
+
+            address = pymem.pattern.pattern_scan_module(self._pm.process_handle, self._module, aob_bytes, mask=mask)
+            
             if address:
-                logging.info(f"AOB Scan found '{aob_pattern}' at: {hex(address)}")
+                logging.info(f"AOB Scan found '{aob_pattern_str}' at: {hex(address)}")
                 return address
             else:
-                logging.warning(f"AOB Scan failed for pattern: '{aob_pattern}'")
+                logging.warning(f"AOB Scan failed for pattern: '{aob_pattern_str}'")
                 return None
+        except ValueError as ve:
+            logging.error(f"Error converting AOB pattern '{aob_pattern_str}' to bytes: {ve}")
+            return None
         except Exception as e:
-            logging.error(f"Error during AOB scan for '{aob_pattern}': {e}")
+            logging.error(f"Error during AOB scan for '{aob_pattern_str}': {e}")
             return None
 
     def attach(self) -> bool:
@@ -100,13 +117,19 @@ class MemoryClient:
         
         try:
             self._pm = pymem.Pymem(self.process_name)
+            self._module = pymem.process.module_from_name(self._pm.process_handle, self.process_name)
+            if not self._module:
+                logging.error(f"Could not find module '{self.process_name}'.")
+                self.detach()
+                return False
+
             self.attached = True
             logging.info(f"Successfully attached to process '{self.process_name}' (PID: {self._pm.process_id}).")
             
             # Perform AOB scans on attach and cache results
-            for name, aob in self._aob_scans.items():
+            for name, aob_pattern in self._aob_patterns.items():
                 if name not in self._bases_static: # Only scan if not already a static address
-                    resolved_addr = self._scan_aob(aob)
+                    resolved_addr = self._scan_aob(aob_pattern)
                     if resolved_addr:
                         self._bases_static[name] = resolved_addr # Cache the resolved address
             
@@ -146,6 +169,7 @@ class MemoryClient:
                 logging.error(f"Error closing process: {e}")
         self.attached = False
         self._pm = None
+        self._module = None
 
     def _read_memory(self, address: int, length: int, data_type: str = 'int') -> Any:
         """Safely reads memory, returning None on error."""
@@ -186,8 +210,8 @@ class MemoryClient:
 
             base_addr = self._bases_static.get(base_key)
             
-            if base_addr is None and base_key in self._aob_scans:
-                resolved_addr = self._scan_aob(self._aob_scans[base_key])
+            if base_addr is None and base_key in self._aob_patterns:
+                resolved_addr = self._scan_aob(self._aob_patterns[base_key])
                 if resolved_addr is None:
                     logging.warning(f"Failed to resolve AOB base for '{base_key}'.")
                     return None
@@ -316,12 +340,17 @@ class MemoryClient:
 
         logging.info(f"Initiating warp to bonfire ID: {target_bonfire_id}")
 
-        lua_warp_aob = "C3 ?? ?? ???????? 57 48 83 EC ?? 48 8B FA 44"
-        lua_warp_addr = self._scan_aob(lua_warp_aob)
-        if not lua_warp_addr:
-            logging.error("Could not find LuaWarp_01 address via AOB scan.")
+        # Get AOB pattern from config for LuaWarp
+        lua_warp_aob_pattern = self._aob_patterns.get("WarpFunction")
+        if not lua_warp_aob_pattern:
+            logging.error("WarpFunction AOB pattern not found in config/addresses.yaml.")
             return False
-        lua_warp_addr += 2
+        
+        lua_warp_addr = self._scan_aob(lua_warp_aob_pattern)
+        if not lua_warp_addr:
+            logging.error(f"Could not find LuaWarp_01 address via AOB scan for pattern: '{lua_warp_aob_pattern}'.")
+            return False
+        lua_warp_addr += 2 # Apply the +2 offset as per previous logic
 
         cs_lua_event_manager_addr = self._bases_static.get("CSLuaEventManager")
         if not cs_lua_event_manager_addr:
