@@ -28,7 +28,7 @@ class EldenHybridEnv(gym.Env):
     Observation space:
     - img: resized game frame, uint8
     - prev_actions: (10, num_actions, 1) one-hot history
-    - state: (6,) float32 [player_hp, player_stamina, boss_hp, time_alive_s, arena_phase, dist_to_boss]
+    - state: (10,) float32 [player_hp, player_stamina, boss_hp, time_alive_s, arena_phase, dist_to_boss, time_since_boss_dmg, player_flask_count, boss_animation_id, boss_is_staggered]
 
     Rewards/termination are computed from memory reads only (no CV-derived signals).
     Resets are instant via memory (teleport + health/stamina restore).
@@ -49,7 +49,9 @@ class EldenHybridEnv(gym.Env):
         self.DEBUG_MODE = bool(config.get("DEBUG_MODE", False))
 
         # New reward shaping parameters
+        # Penalty per second for time alive without significant progress. Encourages efficient play.
         self.TIME_ALIVE_PENALTY_PER_SECOND = float(config.get("TIME_ALIVE_PENALTY_PER_SECOND", 1.0))
+        # Penalty per second for not hitting the boss. Discourages stalling/running away.
         self.NO_BOSS_HIT_PENALTY_PER_SECOND = float(config.get("NO_BOSS_HIT_PENALTY_PER_SECOND", 5.0))
         self.PROGRESS_REWARD_SCALE = float(config.get("PROGRESS_REWARD_SCALE", 150.0))
         self.HEALING_FLASK_AMOUNT_HP_RATIO = float(config.get("HEALING_FLASK_AMOUNT_HP_RATIO", 0.4)) # e.g. a flask heals 40% of max HP
@@ -69,7 +71,7 @@ class EldenHybridEnv(gym.Env):
         self.action_space = spaces.Discrete(self.NUMBER_DISCRETE_ACTIONS)
         self.observation_space = spaces.Dict(
             {
-                "img": spaces.Box(low=0, high=255, shape=(MODEL_HEIGHT, MODEL_WIDTH, N_CHANNels), dtype=np.uint8),
+                "img": spaces.Box(low=0, high=255, shape=(MODEL_HEIGHT, MODEL_WIDTH, N_CHANNELS), dtype=np.uint8),
                 "prev_actions": spaces.Box(low=0, high=1, shape=(N_ACTIONS_HISTORY, self.NUMBER_DISCRETE_ACTIONS, 1), dtype=np.uint8),
                 # state: [hp, stamina, boss_hp, time_alive_s, arena_phase, dist_to_boss, time_since_boss_dmg, player_flask_count, boss_animation_id, boss_is_staggered]
                 "state": spaces.Box(low=-np.inf, high=np.inf, shape=(10,), dtype=np.float32), # Increased from 7 to 10
@@ -105,9 +107,8 @@ class EldenHybridEnv(gym.Env):
 
         # Runtime
         self.action_history: list[int] = []
-        self.t_start = time.time()
+        self.prev_episode_start_time = time.time() # Track start time for time_alive calculation
         self.prev_boss_animation_id = -1 # Track previous boss animation
-        self.time_alive_ref = time.time()
         self.step_iteration = 0
         self.first_step = True
         self.curr_phase = 1.0
@@ -147,7 +148,7 @@ class EldenHybridEnv(gym.Env):
         stam = self.game.player_stamina
         boss_hp = self.game.boss_hp if self.GAME_MODE == "PVE" else 1.0
         dist = self.game.distance_to_boss or 0.0 # Use property directly
-        time_alive = max(0.0, time.time() - self.time_alive_ref)
+        time_alive = max(0.0, time.time() - self.prev_episode_start_time) # Use episode start time
         time_since_boss_dmg = max(0.0, time.time() - self.time_since_boss_dmg) # How long since boss was last hit by player
         
         flask_count = self.game.player_flask_count if self.game.player_flask_count is not None else 0
@@ -180,7 +181,7 @@ class EldenHybridEnv(gym.Env):
         if first_step:
             self.time_since_dmg_taken = time.time() - 10 # Initialize to avoid early penalty for first few seconds
             self.time_since_boss_dmg = time.time() - 10 # Initialize for the same reason
-            self.t_start = time.time() # Re-initialize episode start time
+            self.prev_episode_start_time = time.time() # Re-initialize episode start time
 
         self.death = self.curr_hp <= 0.01
         self.boss_death = (self.GAME_MODE == "PVE") and (self.curr_boss_hp <= 0.01)
@@ -225,16 +226,14 @@ class EldenHybridEnv(gym.Env):
             
             # Bonus for hitting a staggered boss
             if boss_is_staggered > 0.5: # Assuming 1.0 for true
-                # If agent just attacked, and boss is staggered, give bonus
-                # This needs agent's attack action to be passed
-                # For now, a flat bonus if boss is observed staggered, encouraging attacks during this time
-                # A more precise reward would be to check if the agent *just* performed an attack action
-                if self.attacked_this_step: # Placeholder - assuming action detection is passed to _compute_reward
+                # This bonus is applied if the agent *just* attacked while the boss is staggered.
+                # The 'attacked_this_step' flag needs to be set correctly in the step() method.
+                if self.attacked_this_step: 
                     stagger_attack_bonus = self.STAGGER_ATTACK_BONUS
 
 
         # 3) General time penalty (encourages efficient play and shorter episodes)
-        time_alive = time.time() - self.t_start
+        time_alive = time.time() - self.prev_episode_start_time
         time_alive_penalty = - (time_alive * self.TIME_ALIVE_PENALTY_PER_SECOND)
         time_alive_penalty = max(time_alive_penalty, -300) # Cap the penalty to prevent runaway negative rewards
 
@@ -318,11 +317,12 @@ class EldenHybridEnv(gym.Env):
             }, 0.0, True, False, {}
 
         # Set per-step flags based on the action taken
-        self.flask_used_this_step = (action == self.config.get("FLASK_ACTION_ID", -1)) # Needs actual action ID for flask
-        self.dodged_this_step = (action == self.config.get("DODGE_ACTION_ID", -1)) # Needs actual action ID for dodge
-        self.attacked_this_step = (action == self.config.get("ATTACK_ACTION_ID", -1)) # Needs actual action ID for attack
-        # ^ You'll need to define FLASK_ACTION_ID, DODGE_ACTION_ID, ATTACK_ACTION_ID in your config and map them to actual actions.
-
+        # NOTE: You MUST define these action IDs in your config (e.g., config/app.yaml or a dedicated actions.yaml)
+        # and ensure they map to the correct discrete action integers.
+        self.flask_used_this_step = (action == self.config.get("FLASK_ACTION_ID", -1)) 
+        self.dodged_this_step = (action == self.config.get("DODGE_ACTION_ID", -1)) 
+        self.attacked_this_step = (action == self.config.get("ATTACK_ACTION_ID", -1)) 
+        
         reward, death, boss_death, duel_won = self._compute_reward_and_termination(
             hp, stam, boss_hp, self.first_step, player_flask_count, boss_animation_id, boss_is_staggered
         )
@@ -343,7 +343,7 @@ class EldenHybridEnv(gym.Env):
                 )
 
         terminated = bool(death or boss_death or duel_won)
-        truncated = bool((time.time() - self.t_start) > 600) # Max episode duration
+        truncated = bool((time.time() - self.prev_episode_start_time) > 600) # Max episode duration, using episode start time
 
         action_name = "UNKNOWN"
         if not (terminated or truncated):
@@ -409,7 +409,7 @@ class EldenHybridEnv(gym.Env):
                 "state": np.zeros(10, dtype=np.float32), # Updated shape
             }, {}
 
-        self.time_alive_ref = time.time()
+        self.prev_episode_start_time = time.time() # Reset episode start time for new episode
         self.curr_phase = 1.0
         
         # Reset reward system internal state for new episode
@@ -432,7 +432,7 @@ class EldenHybridEnv(gym.Env):
         self.step_iteration = 0
         self.action_history = []
         self.first_step = True
-        self.t_start = time.time()
+        # self.t_start is now replaced by self.prev_episode_start_time
 
         # Final state read for initial observation
         hp, stam, boss_hp, dist, time_alive, phase, time_since_boss_dmg, player_flask_count, boss_animation_id, boss_is_staggered = self._read_state()
@@ -444,10 +444,3 @@ class EldenHybridEnv(gym.Env):
             "state": np.asarray(state_vec, dtype=np.float32),
         }
         return obs, {}
-
-    def render(self):
-        pass
-
-    def close(self):
-        self.game.close() # Call close method on EldenRingGame
-        cv2.destroyAllWindows()
