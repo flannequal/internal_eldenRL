@@ -2,7 +2,6 @@ PROCESS_NAME: eldenring.exe
 PYTESSERACT_PATH: C:/msys64/mingw64/bin/tesseract.exe
 MONITOR: 1
 DEBUG_MODE: false
-GAME_MODE: PVE
 BOSS: 8
 DESIRED_FPS: 24
 SIMULATE_MEMORY: false

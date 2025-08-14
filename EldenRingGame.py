@@ -25,17 +25,14 @@ class EldenRingGame:
             logging.error("Failed to attach to Elden Ring process. Ensure the game is running.")
             raise RuntimeError("Failed to initialize EldenRingGame: MemoryManager attachment failed.")
         
-        # Game-specific config and databases
-        # Removed GAME_MODE config, assuming PVE
         self.BOSS = int(config.get("BOSS", 1))
-        # Player Max HP for calculations in EldenHybridEnv
         self._player_max_hp_val: Optional[int] = None 
 
         self._arena_meta_db: Dict[int, Dict[str, Any]] = {}
         self._bonfires_db: Dict[str, int] = {}
         self._wcm_offsets: Dict[str, int] = {}
         self._char_offsets: Dict[str, int] = {}
-        self._aob_scans: Dict[str, int] = {} # Initialize _aob_scans to cache AOB results from MemoryManager
+        self._aob_scans: Dict[str, int] = {} 
 
         self._load_game_configs()
 

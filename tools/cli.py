@@ -88,7 +88,6 @@ def _validate_arena(arena: Dict[str, Any], prefix: str, errors: list) -> None:
 def cmd_sim_loop(iterations: int, boss: int, fps: float) -> int:
     """Run a lightweight simulation loop without a running game."""
     config = {
-        "GAME_MODE": "PVE",
         "BOSS": boss,
         "DESIRED_FPS": fps,
         "PROCESS_NAME": "eldenring.exe",
