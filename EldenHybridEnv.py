@@ -58,9 +58,13 @@ class EldenHybridEnv(gym.Env):
         self.FLASK_USAGE_REWARD = float(config.get("FLASK_USAGE_REWARD", 50.0)) # Reward for good flask use
         self.FLASK_USAGE_PENALTY = float(config.get("FLASK_USAGE_PENALTY", -25.0)) # Penalty for wasteful flask use
         self.DODGE_SUCCESS_REWARD = float(config.get("DODGE_SUCCESS_REWARD", 20.0)) # Reward for successful dodge
-        self.DODGE_WASTE_PENALTY = float(config.get("DODGE_WASTE_PENALTY", -5.0)) # Penalty for dodging nothing
+        self.DODGE_WASTE_PENALTY = float(config.get("DODGE_WASTE_PENALTY", -5.0)) # Penalty for dodging nothing (spamming)
         self.STAGGER_ATTACK_BONUS = float(config.get("STAGGER_ATTACK_BONUS", 100.0)) # Bonus for hitting staggered boss
         
+        # Dodge spam detection parameters
+        self.DODGE_SPAM_THRESHOLD_S = float(config.get("DODGE_SPAM_THRESHOLD_S", 1.0)) # Time window to consider dodges as spam
+        self.DODGE_SPAM_PENALTY = float(config.get("DODGE_SPAM_PENALTY", -50.0)) # Penalty for spamming dodges
+
         # For debug overlay
         self.font = cv2.FONT_HERSHEY_SIMPLEX
         self.font_scale = 0.5
@@ -104,6 +108,10 @@ class EldenHybridEnv(gym.Env):
         self.flask_used_this_step = False # New flag for flask usage detection
         self.dodged_this_step = False # New flag for dodge usage detection
         self.attacked_this_step = False # New flag for attack action (if needed for dodge logic)
+
+        # Dodge spam detection state
+        self._last_dodge_time: float = 0.0
+        self._consecutive_dodges: int = 0
 
         # Runtime
         self.action_history: list[int] = []
@@ -253,9 +261,21 @@ class EldenHybridEnv(gym.Env):
         # 5) Dodge rewards/penalties
         dodge_reward = 0
         if self.dodged_this_step: # This flag needs to be set in the step() method based on action
-            # Removed complex dodge logic that relied on boss animation ID
-            # For now, a simple penalty for dodging if not explicitly rewarded
-            dodge_reward = self.DODGE_WASTE_PENALTY # Penalty for dodging randomly
+            current_time = time.time()
+            time_since_last_dodge = current_time - self._last_dodge_time
+
+            if time_since_last_dodge < self.DODGE_SPAM_THRESHOLD_S:
+                # Dodged too quickly after the last dodge
+                self._consecutive_dodges += 1
+                dodge_reward = self.DODGE_SPAM_PENALTY # Penalty for spamming
+                logging.debug(f"Dodge spam detected! Consecutive dodges: {self._consecutive_dodges}")
+            else:
+                # Dodge was spaced out enough, reset consecutive dodge count
+                self._consecutive_dodges = 1
+                dodge_reward = self.DODGE_SUCCESS_REWARD # Reward for a well-timed dodge
+                logging.debug(f"Well-timed dodge. Resetting consecutive dodges to 1.")
+            
+            self._last_dodge_time = current_time # Update last dodge time
 
         # 6) PvP rewards (placeholder - can be expanded with specific PvP signals if available)
         pvp_reward = 0
@@ -414,6 +434,10 @@ class EldenHybridEnv(gym.Env):
         self.dodged_this_step = False
         self.attacked_this_step = False
         # Removed: self.prev_boss_animation_id = -1 # Reset for new episode
+
+        # Reset dodge spam detection state
+        self._last_dodge_time = 0.0
+        self._consecutive_dodges = 0
 
         # Reset trackers
         self.step_iteration = 0
