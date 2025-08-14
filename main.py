@@ -2,12 +2,11 @@ import os
 import train
 
 try:
-    import yaml  # type: ignore
+    import yaml  
 except Exception:
     yaml = None
 
 if __name__ == '__main__':
-    # Centralized config: load from config/app.yaml (or sample), allow env var overrides
     env_config = {}
     cfg_path = os.environ.get('ELDENRL_APP_CONFIG', os.path.join('config', 'app.yaml'))
     if yaml is not None and os.path.isfile(cfg_path):
@@ -19,7 +18,6 @@ if __name__ == '__main__':
     else:
         env_config = {
             "PROCESS_NAME": "eldenring.exe",
-            # Removed GAME_MODE config, assuming PVE
             "BOSS": 8,
             "DESIRED_FPS": 24,
             "SIMULATE_MEMORY": False,
