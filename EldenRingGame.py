@@ -28,7 +28,6 @@ class EldenRingGame:
         # Game-specific config and databases
         self.GAME_MODE = config.get("GAME_MODE", "PVE")
         self.BOSS = int(config.get("BOSS", 1))
-        self.BOSS_HAS_SECOND_PHASE = bool(config.get("BOSS_HAS_SECOND_PHASE", False))
 
         self._arena_meta_db: Dict[int, Dict[str, Any]] = {}
         self._bonfires_db: Dict[str, int] = {}

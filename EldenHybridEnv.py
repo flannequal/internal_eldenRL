@@ -42,7 +42,6 @@ class EldenHybridEnv(gym.Env):
         self.config = config
         self.GAME_MODE = config.get("GAME_MODE", "PVE")
         self.BOSS = int(config.get("BOSS", 1))
-        self.BOSS_HAS_SECOND_PHASE = bool(config.get("BOSS_HAS_SECOND_PHASE", False))
         self.DESIRED_FPS = float(config.get("DESIRED_FPS", 24))
         self.LOG_MEMORY_DEBUG = bool(config.get("LOG_MEMORY_DEBUG", False))
         self.MEMORY_DEBUG_INTERVAL = int(config.get("MEMORY_DEBUG_INTERVAL", 1))

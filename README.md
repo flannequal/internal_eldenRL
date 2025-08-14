@@ -28,7 +28,7 @@ Note: This project is standalone. Other projects like “SoulsGym” are referen
 - `MEMORY_CONFIG_PATH`: optional YAML with per-boss arenas (spawn positions; used during reset)
 - `SIMULATE_MEMORY`: True to use offline simulated memory values for local dry-runs (no game required)
 - `MONITOR`, `PYTESSERACT_PATH`, `DEBUG_MODE`: for image capture/display
-- `BOSS`, `BOSS_HAS_SECOND_PHASE`, `DESIRED_FPS` etc.
+- `BOSS`, `DESIRED_FPS` etc.
 
 YAML schema (example):
 
