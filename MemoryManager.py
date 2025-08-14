@@ -4,8 +4,6 @@ import logging
 from typing import Optional, Dict, Any
 import yaml
 import pymem
-import pymem.pattern
-import struct
 
 
 class MemoryManager:
@@ -19,13 +17,12 @@ class MemoryManager:
         self.attached = False
         self._last_attach_attempt = 0.0
         self._pm: Optional[pymem.Pymem] = None
-        self._module = None  # Store the main module for pattern scanning
+        self._module = None
 
         # Config caches for generic memory access (bases and pointer chains)
-        # Resolved static base addresses
+
         self._bases_static: Dict[str, int] = {}
-        self._aob_patterns: Dict[str, str] = {}  # AOB patterns to scan
-        # Pointer chain definitions from config
+        self._aob_patterns: Dict[str, str] = {}
         self._addresses: Dict[str, Any] = {}
 
         self._load_configs()
