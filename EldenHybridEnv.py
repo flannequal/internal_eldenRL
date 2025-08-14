@@ -22,7 +22,7 @@ MODEL_HEIGHT = int(450 / 2)
 N_ACTIONS_HISTORY = 10
 
 
-class EldenHybridEnv(gym.Env):
+class   EldenHybridEnv(gym.Env):
     """Hybrid Gym environment: vision for spatial context + memory for exact game state.
 
     Observation space:

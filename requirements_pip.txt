@@ -1,0 +1,12 @@
+backports.tarfile==1.2.0
+importlib-metadata==8.0.0
+jaraco.collections==5.1.0
+mss==10.0.0
+opencv-python==4.12.0.88
+pip-chill==1.0.3
+platformdirs==4.2.2
+pydirectinput==1.0.4
+pymem==1.14.0
+pyyaml==6.0.2
+stable-baselines3==2.7.0
+tomli==2.0.1
