@@ -1,4 +1,3 @@
-ENV_MODE: HYBRID
 PROCESS_NAME: eldenring.exe
 PYTESSERACT_PATH: C:/msys64/mingw64/bin/tesseract.exe
 MONITOR: 1

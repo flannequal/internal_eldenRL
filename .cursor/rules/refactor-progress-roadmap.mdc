@@ -63,7 +63,6 @@ Notes:
   - DoD: Resolve at least player hp address via signature; store in OffsetDB
 
 ## Config defaults
-- `ENV_MODE`: VISION or MEMORY
 - `RESET_MODE`: MEMORY (default for VISION env to use instant resets)
 - `PROCESS_NAME`: defaults to `eldenring.exe`
 - YAML load order: `MEMORY_CONFIG_PATH` → `config/memory_arenas.yaml` → `config/memory_arenas.sample.yaml`

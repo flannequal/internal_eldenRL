@@ -18,7 +18,6 @@ if __name__ == '__main__':
             env_config = yaml.safe_load(f) or {}
     else:
         env_config = {
-            "ENV_MODE": "HYBRID",
             "PROCESS_NAME": "eldenring.exe",
             # Removed GAME_MODE config, assuming PVE
             "BOSS": 8,
