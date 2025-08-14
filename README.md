@@ -1,24 +1,19 @@
 # EldenRL (Hybrid) – Single pipeline using vision + memory
 
-EldenRL now uses one unified environment that combines a real game image (for spatial context) with precise state read from game memory (hp, stamina, boss hp, etc.). Rewards and termination come from memory; the image is for perception of obstacles and motion.
-
-The training stack remains based on OpenAI `gym` (Gymnasium) and Stable-Baselines3.
+EldenRL uses one unified environment that combines a real game image (for spatial context) with precise state read from game memory (hp, stamina, boss hp, etc.). Rewards and termination come from memory; the image is for perception of obstacles and motion.
 
 ## Requirements
-
 - Windows 10/11
-- Elden Ring running in single-player offline mode (fixed version while using memory addresses)
-- Windows 10/11
-- Elden Ring running in single-player offline mode (fixed version while using memory addresses)
+- elden ring offline, developed in v1.16 (DLC inc)
 - Python 3.9+
-- Stable-Baselines3, PyTorch
+- Stable-Baselines3, PyTorch (--index-url https://download.pytorch.org/whl/cu126  {ur cuda ver at 126 using nvcc -V })
 - OpenCV, `mss`
   
 Note: This project is standalone. Other projects like “SoulsGym” are reference-only (useful for ideas).
 
 ## Quick start
 
-1. Install dependencies (venv recommended)
+1. Install dependencies (venv recommended) with requirements-pip.txt
 2. Configure `main.py` (Hybrid is default)
 3. Run `python main.py`
 

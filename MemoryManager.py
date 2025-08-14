@@ -448,33 +448,195 @@ class MemoryManager:
         logging.warning(f"Unsupported offset type: {type(off)}")
         return None
 
-# --- pointer-chain follower ----------------------------------------------
+    def _follow_pointer_chain(self,
+                              base_spec,
+                              offsets,
+                              deref_before_add: bool = True,
+                              deref_final: bool = True,
+                              _visited: Optional[set] = None) -> Optional[int]:
+        """
+        Follow a pointer chain and return the final address (not the value at it).
 
-    def _follow_pointer_chain(self, base_addr: int, offsets: list[int]) -> Optional[int]:
-        """Given base address and list of offsets (ints), follow pointer chain and return final address."""
-        addr = base_addr
-        for i, off in enumerate(offsets):
-            if addr is None:
-                logging.debug(
-                    f"_follow_pointer_chain: addr became None at step {i}")
-                return None
-            target = addr + off
-            # When offsets include a final 0 which means "addr + 0" and no deref, we still read pointer at that address
-            # For the last offset in the chain, it's typically an offset to the value, not another pointer.
-            # So, only dereference if it's not the *last* offset.
-            # Correction: The original code always dereferences. We should keep that behavior.
-            # The last offset is part of the chain leading to a pointer, not necessarily the final value.
-            ptr = self._read_ptr_value(target)
-            if ptr is None:
-                logging.debug(
-                    f"_follow_pointer_chain: failed to read pointer at {hex(target)} (step {i})")
-                return None
-            logging.debug(
-                f"_follow_pointer_chain: step {i}: read {hex(ptr)} from {hex(target)}")
-            addr = ptr
-        return addr
+        Parameters:
+        - base_spec: int (absolute address) or str (name/AOB/hex-string) -- will be resolved
+        - offsets: iterable of ints or strings (hex or decimal)
+        - deref_before_add: if True, use CHEAT-ENGINE style: addr = current + off; ptr = read_ptr(addr)
+                            if False, use read-then-add: ptr = read_ptr(current); next = ptr + off
+        - deref_final: if True, dereference the final computed address (return the pointer read);
+                        if False, return the final computed address itself.
+        - _visited: optional set from _resolve_pointer_path to prevent recursion (pass-through)
+        """
+        # Normalize offsets into ints
+        parsed_offsets = []
+        for o in offsets or []:
+            try:
+                parsed_offsets.append(
+                    int(o, 0) if isinstance(o, str) else int(o))
+            except Exception:
+                logging.warning(
+                    "_follow_pointer_chain: invalid offset '%s' (skipping)", o)
+                continue
+
+        # Resolve base_spec:
+        base_addr = None
+        # If passed an integer already, take it literally
+        if isinstance(base_spec, int):
+            base_addr = base_spec
+            logging.warning(
+                "_follow_pointer_chain: numeric base %s", hex(base_addr))
+        else:
+            # base_spec expected to be a string: could be hex string, AOB:, named key, or module_base
+            bs = str(base_spec).strip()
+            if bs.upper().startswith("AOB:"):
+                # use your existing aob scan helper
+                base_addr = self._scan_aob(bs)
+                logging.warning("_follow_pointer_chain: base AOB '%s' scanned -> %s",
+                                bs, None if base_addr is None else hex(base_addr))
+            else:
+                # try parse as hex literal first
+                try:
+                    base_addr = int(bs, 16)
+                    logging.warning(
+                        "_follow_pointer_chain: base hex string '%s' -> %s", bs, hex(base_addr))
+                except ValueError:
+                    # treat as named key: use _resolve_pointer_path but pass _visited to avoid recursion
+                    try:
+                        if _visited is None:
+                            base_addr = self._resolve_pointer_path(bs)
+                        else:
+                            base_addr = self._resolve_pointer_path(
+                                bs, _visited)
+                    except Exception as e:
+                        logging.exception(
+                            "_follow_pointer_chain: exception resolving base key '%s': %s", bs, e)
+                        base_addr = None
+                    logging.warning("_follow_pointer_chain: base key '%s' resolved -> %s",
+                                    bs, None if base_addr is None else hex(base_addr))
+
+        if base_addr is None:
+            logging.warning(
+                "_follow_pointer_chain: base could not be resolved (%s)", repr(base_spec))
+            return None
+
+        if not parsed_offsets:
+            logging.warning(
+                "_follow_pointer_chain: no offsets -> returning base %s", hex(base_addr))
+            return base_addr
+
+        # Choose pointer read function (prefer 64-bit)
+        if hasattr(self, "read_longlong") and callable(getattr(self, "read_longlong")):
+            ptr_read = self.read_longlong
+            ptr_size = 8
+        elif hasattr(self, "read_int") and callable(getattr(self, "read_int")):
+            ptr_read = self.read_int
+            ptr_size = 4
+        else:
+            logging.warning(
+                "_follow_pointer_chain: no pointer read available (read_longlong/read_int)")
+            return None
+
+        current = base_addr
+        logging.warning("_follow_pointer_chain: starting base=%s offsets=%s deref_before_add=%s deref_final=%s ptr_size=%d",
+                        hex(base_addr), [hex(x) for x in parsed_offsets], deref_before_add, deref_final, ptr_size)
+
+        # Walk chain
+        for i, off in enumerate(parsed_offsets):
+            is_last = (i == len(parsed_offsets) - 1)
+
+            if deref_before_add:
+                # CHEAT-ENGINE style: compute addr = current + off, then read pointer at addr
+                addr_to_read = current + off
+                try:
+                    ptr_val = ptr_read(addr_to_read)
+                except Exception as e:
+                    logging.exception("_follow_pointer_chain: exception reading pointer at %s step %d: %s",
+                                      hex(addr_to_read), i, e)
+                    return None
+
+                if ptr_val is None:
+                    logging.warning(
+                        "_follow_pointer_chain: read_ptr returned None at %s step %d", hex(addr_to_read), i)
+                    return None
+
+                # normalize unsigned representation
+                if ptr_size == 8:
+                    ptr_val = int(ptr_val) & ((1 << 64) - 1)
+                else:
+                    ptr_val = int(ptr_val) & ((1 << 32) - 1)
+
+                logging.warning("_follow_pointer_chain: step %d: read_ptr(%s) -> %s; offset=%s",
+                                i, hex(addr_to_read), hex(ptr_val), hex(off))
+
+                if is_last:
+                    if deref_final:
+                        logging.warning(
+                            "_follow_pointer_chain: final (deref) -> %s", hex(ptr_val))
+                        return ptr_val
+                    else:
+                        logging.warning(
+                            "_follow_pointer_chain: final (addr) -> %s", hex(addr_to_read))
+                        return addr_to_read
+                else:
+                    current = ptr_val
+
+            else:
+                # read-then-add: ptr = read_ptr(current); next = ptr + off
+                try:
+                    ptr_val = ptr_read(current)
+                except Exception as e:
+                    logging.exception("_follow_pointer_chain: exception reading pointer at %s step %d: %s",
+                                      hex(current), i, e)
+                    return None
+
+                if ptr_val is None:
+                    logging.warning(
+                        "_follow_pointer_chain: read_ptr returned None at %s step %d", hex(current), i)
+                    return None
+
+                if ptr_size == 8:
+                    ptr_val = int(ptr_val) & ((1 << 64) - 1)
+                else:
+                    ptr_val = int(ptr_val) & ((1 << 32) - 1)
+
+                next_addr = ptr_val + off
+                logging.warning("_follow_pointer_chain: step %d: read_ptr(%s) -> %s; + offset %s => next %s",
+                                i, hex(current), hex(ptr_val), hex(off), hex(next_addr))
+
+                if is_last:
+                    if deref_final:
+                        # final dereference of next_addr
+                        try:
+                            final_ptr = ptr_read(next_addr)
+                        except Exception as e:
+                            logging.exception(
+                                "_follow_pointer_chain: exception reading final pointer at %s: %s", hex(next_addr), e)
+                            return None
+                        if final_ptr is None:
+                            logging.warning(
+                                "_follow_pointer_chain: final read returned None at %s", hex(next_addr))
+                            return None
+                        if ptr_size == 8:
+                            final_ptr = int(final_ptr) & ((1 << 64) - 1)
+                        else:
+                            final_ptr = int(final_ptr) & ((1 << 32) - 1)
+                        logging.warning(
+                            "_follow_pointer_chain: final (deref) -> %s", hex(final_ptr))
+                        return final_ptr
+                    else:
+                        logging.warning(
+                            "_follow_pointer_chain: final (addr) -> %s", hex(next_addr))
+                        return next_addr
+                else:
+                    current = next_addr
+
+        # fallback
+        logging.warning(
+            "_follow_pointer_chain: fell out, returning current %s", hex(current))
+        return current
+
 
 # --- main resolver/reader -----------------------------------------------
+
 
     def _resolve_pointer_path(self, path_key: str, _visited: Optional[set] = None) -> Optional[int]:
         """
@@ -579,6 +741,9 @@ class MemoryManager:
                     f"_resolve_pointer_path: unsupported base_spec type for '{path_key}': {type(base_spec)}")
                 return None
 
+            logging.debug(
+                f"_resolve_pointer_path: for '{path_key}': base_spec={base_spec!r} resolved to {None if base_addr is None else hex(base_addr)}")
+            logging.debug(f"_resolve_pointer_path: offsets_raw={offsets_spec}")
             if base_addr is None:
                 logging.warning(
                     f"_resolve_pointer_path: base for '{path_key}' could not be resolved: {base_spec}")
@@ -600,8 +765,11 @@ class MemoryManager:
                     f"_resolve_pointer_path: '{path_key}' resolved to base {hex(base_addr)} (no offsets)")
                 return base_addr
 
-            # follow pointer chain
-            final = self._follow_pointer_chain(base_addr, offsets)
+            # follow pointer chain — pass the original base_spec and the _visited set to avoid recursion issues
+            final = self._follow_pointer_chain(base_spec, offsets,
+                                               deref_before_add=True,
+                                               deref_final=True,
+                                               _visited=_visited)
             if final is None:
                 logging.warning(
                     f"_resolve_pointer_path: failed to follow pointer chain for '{path_key}' (base {hex(base_addr)})")
