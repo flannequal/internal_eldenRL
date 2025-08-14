@@ -48,6 +48,10 @@ class EldenHybridEnv(gym.Env):
         self.MONITOR = int(config.get("MONITOR", 1))
         self.DEBUG_MODE = bool(config.get("DEBUG_MODE", False))
 
+        # New reward shaping parameters
+        self.TIME_ALIVE_PENALTY_PER_SECOND = float(config.get("TIME_ALIVE_PENALTY_PER_SECOND", 1.0))
+        self.NO_BOSS_HIT_PENALTY_PER_SECOND = float(config.get("NO_BOSS_HIT_PENALTY_PER_SECOND", 5.0))
+        self.PROGRESS_REWARD_SCALE = float(config.get("PROGRESS_REWARD_SCALE", 150.0))
         # For debug overlay
         self.font = cv2.FONT_HERSHEY_SIMPLEX
         self.font_scale = 0.5

@@ -93,7 +93,6 @@ class EldenRingGame:
         return True
 
     def close(self):
-        """Detaches from the process and cleans up resources."""
         self.mem.detach()
         logging.info("EldenRingGame closed: detached from process.")
 
@@ -227,21 +226,21 @@ class EldenRingGame:
 
         logging.info(f"Initiating warp to bonfire ID: {target_bonfire_id}")
 
-        # Get AOB pattern from MemoryManager's internal cache
-        lua_warp_aob_pattern = self.mem._aob_patterns.get("WarpFunction") # Access internal AOB patterns
+        # Get AOB pattern from MemoryManagers internal cache
+        lua_warp_aob_pattern = self.mem._aob_patterns.get("WarpFunction")
         if not lua_warp_aob_pattern:
             logging.error(
                 "WarpFunction AOB pattern not found in MemoryManager's config."
             )
             return False
 
-        lua_warp_addr = self.mem._scan_aob(lua_warp_aob_pattern) # Use MemoryManager's scanner
+        lua_warp_addr = self.mem._scan_aob(lua_warp_aob_pattern) 
         if not lua_warp_addr:
             logging.error(
                 f"Could not find LuaWarp_01 address via AOB scan for pattern: '{lua_warp_aob_pattern}'."
             )
             return False
-        lua_warp_addr += 2  # Apply the +2 offset as per previous logic
+        lua_warp_addr += 2  
 
         cs_lua_event_manager_addr, _ = self.mem.get_address_value("CSLuaEventManager")
         if not cs_lua_event_manager_addr:
@@ -459,17 +458,17 @@ class EldenRingGame:
             count = 0
             while p < end:
                 count += 1
-                ent = self.mem.read_longlong(p) # Read pointer to entity
-                p += 8 # Move to next entity pointer
-                if ent is None or ent < 0x10000: # Basic validation for entity pointer
+                ent = self.mem.read_longlong(p) 
+                p += 8 
+                if ent is None or ent < 0x10000: 
                     continue
 
-                pid = self.mem.read_int(ent + 0x60) # Character Parameter ID is at +0x60
+                pid = self.mem.read_int(ent + 0x60) #character parameter ID is at +0x60
                 if pid != self._boss_param_id:
                     continue
 
                 logging.info(
-                    f"!!! Found boss with matching PID at entity address {hex(ent)} after {count} scans."
+                    f" Found boss with matching PID at entity address {hex(ent)} after {count} scans :)"
                 )
                 
                 # Further offsets to reach stats and transform
