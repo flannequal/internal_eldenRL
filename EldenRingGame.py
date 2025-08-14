@@ -28,11 +28,14 @@ class EldenRingGame:
         # Game-specific config and databases
         self.GAME_MODE = config.get("GAME_MODE", "PVE")
         self.BOSS = int(config.get("BOSS", 1))
+        # Player Max HP for calculations in EldenHybridEnv
+        self._player_max_hp_val: Optional[int] = None 
 
         self._arena_meta_db: Dict[int, Dict[str, Any]] = {}
         self._bonfires_db: Dict[str, int] = {}
         self._wcm_offsets: Dict[str, int] = {}
         self._char_offsets: Dict[str, int] = {}
+        self._aob_scans: Dict[str, int] = {} # Initialize _aob_scans to cache AOB results from MemoryManager
 
         self._load_game_configs()
 
@@ -104,7 +107,20 @@ class EldenRingGame:
         _, max_hp = self.mem.get_address_value("PlayerMaxHP")
         if max_hp is None or max_hp <= 0:
             return None
+        # Cache max_hp as it's needed for flask calculations
+        self._player_max_hp_val = max_hp 
         return max(0.0, min(1.0, current_hp / max_hp))
+
+    @property
+    def player_max_hp(self) -> Optional[int]:
+        """Returns the raw integer value of player's maximum HP."""
+        # This value is updated by the player_hp property, or can be read directly if needed.
+        if self._player_max_hp_val is None:
+            # Attempt to read directly if not already cached
+            _, max_hp = self.mem.get_address_value("PlayerMaxHP")
+            if max_hp is not None:
+                self._player_max_hp_val = max_hp
+        return self._player_max_hp_val
 
     @property
     def player_stamina(self) -> Optional[float]:
@@ -127,6 +143,35 @@ class EldenRingGame:
         except Exception as e:
             logging.error(f"Error unpacking player position: {e}")
             return None
+
+    @property
+    def player_flask_count(self) -> Optional[int]:
+        """Returns the current number of healing flasks (e.g., Crimson Flasks)."""
+        _, flask_count = self.mem.get_address_value("PlayerFlaskCount")
+        return flask_count
+
+    @property
+    def boss_animation_id(self) -> Optional[int]:
+        """Returns the current animation ID of the boss."""
+        # This requires _boss_comp_addr to be resolved, which happens when boss_hp is read.
+        if not self._boss_comp_addr:
+            # Try to resolve if not resolved, but don't force it here to avoid loops.
+            # It's expected to be resolved when boss_hp is accessed.
+            return None
+        
+        # This offset is typically from the character's base/component address
+        anim_id_addr = self._boss_comp_addr + self._char_offsets.get("animation_id_off", 0)
+        anim_id = self.mem.read_int(anim_id_addr)
+        return anim_id
+
+    @property
+    def boss_is_staggered(self) -> bool:
+        """Returns True if the boss is currently in a staggered state."""
+        # This depends on finding a specific memory flag or a range of animation IDs
+        # that correspond to a staggered state.
+        # For now, let's assume an address 'BossStaggerFlag'
+        _, staggered_flag_val = self.mem.get_address_value("BossStaggerFlag")
+        return bool(staggered_flag_val and staggered_flag_val > 0) # Assume 1=staggered, 0=not
 
     def _write_last_grace(self, grace_id: int):
         addr, _ = self.mem.get_address_value("LastGrace") # get_address_value includes type info, but we write int
@@ -226,21 +271,13 @@ class EldenRingGame:
 
         logging.info(f"Initiating warp to bonfire ID: {target_bonfire_id}")
 
-        # Get AOB pattern from MemoryManagers internal cache
-        lua_warp_aob_pattern = self.mem._aob_patterns.get("WarpFunction")
-        if not lua_warp_aob_pattern:
-            logging.error(
-                "WarpFunction AOB pattern not found in MemoryManager's config."
-            )
-            return False
-
-        lua_warp_addr = self.mem._scan_aob(lua_warp_aob_pattern) 
+        # Get AOB pattern from MemoryManager's internal cache
+        # Use MemoryManager's public get_address_value which will internally handle _aob_patterns and _scan_aob
+        lua_warp_addr, _ = self.mem.get_address_value("WarpFunction")
         if not lua_warp_addr:
-            logging.error(
-                f"Could not find LuaWarp_01 address via AOB scan for pattern: '{lua_warp_aob_pattern}'."
-            )
+            logging.error("WarpFunction address not resolved.")
             return False
-        lua_warp_addr += 2  
+        lua_warp_addr += 2  # Apply the +2 offset as per previous logic
 
         cs_lua_event_manager_addr, _ = self.mem.get_address_value("CSLuaEventManager")
         if not cs_lua_event_manager_addr:

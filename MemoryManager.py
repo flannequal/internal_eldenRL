@@ -505,10 +505,20 @@ class MemoryManager:
                 f"_resolve_pointer_path: '{path_key}' found in bases_static -> {hex(bases[path_key])}")
             return bases[path_key]
 
-        # 2) direct aob pattern
+        # This method's logic should generally remain unchanged, but ensuring correct use of _aob_scans cache
+        # 1) direct static base
+        bases = self._bases_static
+        if path_key in bases:
+            logging.debug(
+                f"_resolve_pointer_path: '{path_key}' found in bases_static -> {hex(bases[path_key])}")
+            return bases[path_key]
+
+        # 2) look in addresses table for pointer-chain entry or a direct AOB definition
+        path_info = self._addresses.get(path_key) # Check in general addresses
+        
+        # If not found in addresses, try AOB patterns directly
         aobs = self._aob_patterns
         if path_key in aobs:
-            # Check AOB scan cache first, then scan if not found
             if path_key not in self._aob_scans:
                 self._aob_scans[path_key] = self._scan_aob(aobs[path_key])
             addr = self._aob_scans[path_key]
@@ -516,11 +526,9 @@ class MemoryManager:
                 f"_resolve_pointer_path: '{path_key}' found in aob_patterns (scanned) -> {addr if addr is None else hex(addr)}")
             return addr
 
-        # 3) look in addresses table for pointer-chain entry
-        path_info = self._addresses.get(path_key)
         if path_info is None:
             logging.debug(
-                f"_resolve_pointer_path: '{path_key}' not in addresses table or already resolved as AOB/static base")
+                f"_resolve_pointer_path: '{path_key}' not in addresses table, static bases, or AOB patterns")
             return None
 
         # If the config has a plain integer or hex string (e.g., direct address)
@@ -529,10 +537,12 @@ class MemoryManager:
         if isinstance(path_info, str):
             s = path_info.strip()
             if s.upper().startswith("AOB:"):
-                # if it's an AOB string, treat it like an AOB pattern
-                if path_key not in self._aob_scans:
-                    self._aob_scans[path_key] = self._scan_aob(s)
-                addr = self._aob_scans[path_key]
+                # If it's an AOB string *within* the addresses block, treat it like a normal AOB pattern
+                # This ensures it gets cached properly under _aob_scans if its key is used directly.
+                aob_key_for_cache = f"AOB_STR_IN_ADDR:{path_key}" # Unique key for this case
+                if aob_key_for_cache not in self._aob_scans:
+                    self._aob_scans[aob_key_for_cache] = self._scan_aob(s)
+                addr = self._aob_scans[aob_key_for_cache]
                 logging.debug(
                     f"_resolve_pointer_path: '{path_key}' found as direct AOB string (scanned) -> {addr if addr is None else hex(addr)}")
                 return addr
