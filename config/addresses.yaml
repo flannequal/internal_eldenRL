@@ -94,10 +94,6 @@ addresses:
     offsets: [0x20, 0xD0, 0x40]
     type: bytes
     length: 12
-  PlayerFlaskCount:
-    base: GameDataMan # Placeholder: Actual offsets to flask count need to be found
-    offsets: [0x123, 0x456] # Placeholder: Actual offsets to flask count need to be found
-    type: int
   PlayerStats:
     base: GameDataMan
     offsets: [0x08, 0x3C]

@@ -1,14 +1,27 @@
 import os
 import train
+import logging
+
+logging.basicConfig(level=logging.DEBUG,
+                    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+                    force=True)  # force=True ensures reconfiguration in recent Python versions
+
+# Also set the root logger and all existing handlers to DEBUG to be safe
+root = logging.getLogger()
+root.setLevel(logging.DEBUG)
+for h in root.handlers:
+    h.setLevel(logging.DEBUG)
+
 
 try:
-    import yaml  
+    import yaml
 except Exception:
     yaml = None
 
 if __name__ == '__main__':
     env_config = {}
-    cfg_path = os.environ.get('ELDENRL_APP_CONFIG', os.path.join('config', 'app.yaml'))
+    cfg_path = os.environ.get('ELDENRL_APP_CONFIG',
+                              os.path.join('config', 'app.yaml'))
     if yaml is not None and os.path.isfile(cfg_path):
         with open(cfg_path, 'r', encoding='utf-8') as f:
             env_config = yaml.safe_load(f) or {}
@@ -26,6 +39,6 @@ if __name__ == '__main__':
             "MEMORY_DEBUG_INTERVAL": 1,
         }
     CREATE_NEW_MODEL = True
-         #Create a new model or resume training for an existing model
+    # Create a new model or resume training for an existing model
 
     train.train(CREATE_NEW_MODEL, env_config)

@@ -1,3 +1,4 @@
+from typing import List, Dict, Optional
 import os
 import time
 import logging
@@ -47,11 +48,13 @@ class EldenRingGame:
         self._boss_resolve_retry_sec: float = 1.0
 
         # Check essential addresses after attaching and loading configs
-        # if not self._check_essential_game_addresses():
-        #     logging.error("Essential game-specific memory addresses could not be resolved. Cannot proceed.")
-        #     self.mem.detach()
-        #     raise RuntimeError("Failed to initialize EldenRingGame: Essential addresses not resolved.")
-        # print(self.player_hp(self))
+        if not self._check_essential_game_addresses():
+            logging.error(
+                "Essential game-specific memory addresses could not be resolved. Cannot proceed.")
+            self.mem.detach()
+            raise RuntimeError(
+                "Failed to initialize EldenRingGame: Essential addresses not resolved.")
+        print(self.player_hp(self))
         logging.info(
             "EldenRingGame initialized and essential addresses resolved.")
 
@@ -154,9 +157,21 @@ class EldenRingGame:
 
     @property
     def player_flask_count(self) -> Optional[int]:
-        """Returns the current number of healing flasks (e.g., Crimson Flasks)."""
-        _, flask_count = self.mem.get_address_value("PlayerFlaskCount")
-        return flask_count
+        """
+        Returns total number of healing flasks (crimson not cerulean) (all upgrades) in players inventory
+        """
+        try:
+            inventory_items = self.get_inventory_items()
+            if not inventory_items:
+                return 0
+
+            # Flask IDs: base to +12 (1000–1025)
+            FLASK_IDS = set(range(1000, 1026))
+
+            return sum(item["quantity"] for item in inventory_items if item["id"] in FLASK_IDS)
+        except Exception as e:
+            logging.error(f"Failed to get player flask count: {e}")
+            return 0
 
     @property
     def boss_animation_id(self) -> Optional[int]:
@@ -706,3 +721,63 @@ class EldenRingGame:
                 break
 
         return matches
+
+
+def get_inventory_items(self, inv_index: int = 0) -> List[Dict]:
+    """
+    Returns a list of all items in the player's inventory.
+    Each item is a dict: {"id": int, "quantity": int, "type_code": int, "entry_address": int}
+    inv_index: which sub-list (0 = player inventory, 1 = storage chest, etc.)
+    """
+    items: List[Dict] = []
+
+    ENTRY_SIZE = 0x18
+    LIST_PTR_OFFSET = 0x10
+    COUNT_OFFSET = 0x18
+    KEY_OFFSET_STRIDE = 0x10
+    FIELD_HANDLE = 0x00
+    FIELD_RAW_ITEMID = 0x04
+    FIELD_QUANTITY = 0x08
+
+    # 1) Resolve EquipInventoryData from addresses.yaml
+    try:
+        _, equip_inventory_data = self.get_address_value(
+            "EquipInventoryData_Player")
+        if not equip_inventory_data:
+            return items
+    except Exception:
+        return items
+
+    # 2) Compute sub-list key offset
+    keyOffset = inv_index * KEY_OFFSET_STRIDE
+
+    # 3) Read inventory list pointer and reported item count
+    inventory_list_ptr = self.mem.read_longlong(
+        equip_inventory_data + LIST_PTR_OFFSET + keyOffset)
+    inventory_count_reported = self.mem.read_int(
+        equip_inventory_data + COUNT_OFFSET + keyOffset)
+    if not inventory_list_ptr or not inventory_count_reported or inventory_count_reported <= 0:
+        return items
+
+    # 4) Iterate over inventory entries
+    for i in range(inventory_count_reported):
+        entry_addr = inventory_list_ptr + i * ENTRY_SIZE
+        try:
+            ga_handle = self.mem.read_int(entry_addr + FIELD_HANDLE)
+            if ga_handle == 0:
+                continue  # empty slot
+            raw_id = self.mem.read_int(entry_addr + FIELD_RAW_ITEMID)
+            quantity = self.mem.read_int(entry_addr + FIELD_QUANTITY)
+            type_code = (raw_id & 0xF0000000) >> 28  # high nibble: type
+            base_id = raw_id & 0x0FFFFFFF
+            items.append({
+                "id": base_id,
+                "raw_id": raw_id,
+                "quantity": quantity or 0,
+                "type_code": type_code,
+                "entry_address": entry_addr
+            })
+        except Exception:
+            continue
+
+    return items
