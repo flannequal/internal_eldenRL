@@ -90,7 +90,6 @@ def cmd_sim_loop(iterations: int, boss: int, fps: float) -> int:
     config = {
         "GAME_MODE": "PVE",
         "BOSS": boss,
-        "BOSS_HAS_SECOND_PHASE": False,
         "DESIRED_FPS": fps,
         "PROCESS_NAME": "eldenring.exe",
         "SIMULATE_MEMORY": True,
