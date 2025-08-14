@@ -13,6 +13,27 @@ bases_aob:
   WarpFunction: "C3 ?? ?? ???????? 57 48 83 EC ?? 48 8B FA 44" # AOB for LuaWarp_01 (will be resolved and +2 applied)
 
 addresses:
+  PlayerGameData:
+    base: GameDataMan
+    offsets: [0x8] 
+    type: ptr
+  
+  EquipInventoryData_Player:
+    base: PlayerGameData
+    offsets: [0x538]
+    type: ptr
+
+  Inventory:
+    entry_size: 0x18
+    list_offset_in_EquipInventoryData: 0x10
+    count_offset_in_EquipInventoryData: 0x18
+    key_offset_stride: 0x10
+
+  InventoryEntryFields:
+    handle: 0x00
+    raw_itemid: 0x04
+    quantity: 0x08
+
   PlayerHP:
     base: WorldChrMan
     offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x138]

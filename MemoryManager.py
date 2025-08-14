@@ -22,9 +22,11 @@ class MemoryManager:
         self._module = None  # Store the main module for pattern scanning
 
         # Config caches for generic memory access (bases and pointer chains)
-        self._bases_static: Dict[str, int] = {} # Resolved static base addresses
-        self._aob_patterns: Dict[str, str] = {} # AOB patterns to scan
-        self._addresses: Dict[str, Any] = {}    # Pointer chain definitions from config
+        # Resolved static base addresses
+        self._bases_static: Dict[str, int] = {}
+        self._aob_patterns: Dict[str, str] = {}  # AOB patterns to scan
+        # Pointer chain definitions from config
+        self._addresses: Dict[str, Any] = {}
 
         self._load_configs()
 
@@ -40,7 +42,8 @@ class MemoryManager:
             return {}
 
     def _load_configs(self):
-        logging.info(f"Loading memory configurations from {self.addresses_config_path}...")
+        logging.info(
+            f"Loading memory configurations from {self.addresses_config_path}...")
         addresses_yaml = self._safe_load_yaml(self.addresses_config_path)
 
         self._bases_static = {}
@@ -64,7 +67,7 @@ class MemoryManager:
                 logging.warning(
                     f"Invalid AOB pattern type for '{name}': {type(pattern)}"
                 )
-        
+
         # Load generic pointer chain definitions
         self._addresses = addresses_yaml.get("addresses", {})
 
@@ -153,7 +156,6 @@ class MemoryManager:
             logging.warning("Cannot scan AOB: not attached to process.")
             return None
 
-        # Parse pattern
         pattern_bytes, mask = self._parse_aob_pattern(aob_pattern_str)
         if not pattern_bytes:
             logging.warning(f"Empty/invalid AOB pattern: '{aob_pattern_str}'")
@@ -167,14 +169,12 @@ class MemoryManager:
         # Try GameAssembly.dll and a few other common names (extend as needed)
         try:
             all_mods = pymem.process.list_modules(self._pm.process_handle)
-            # preferred module names (lowercase)
             preferred = {"gameassembly.dll", self.process_name.lower()}
             # add preferred modules first if present
             for mod in all_mods:
                 name = getattr(mod, "name", "").lower()
                 if name in preferred and mod not in modules_to_try:
                     modules_to_try.append(mod)
-            # fallback: append all modules (if earlier tries fail you may want to expand search)
         except Exception as e:
             logging.debug(f"Could not list modules: {e}")
 
@@ -240,10 +240,11 @@ class MemoryManager:
             # Perform AOB scans on attach and cache results
             for name, aob_pattern in self._aob_patterns.items():
                 # Only scan if not already a static address (e.g., if it's explicitly defined in bases_static)
-                if name not in self._bases_static: 
+                if name not in self._bases_static:
                     resolved_addr = self._scan_aob(aob_pattern)
                     if resolved_addr:
-                        self._bases_static[name] = resolved_addr # Cache the resolved address
+                        # Cache the resolved address
+                        self._bases_static[name] = resolved_addr
 
             return True
         except pymem.exception.ProcessNotFound:
@@ -313,7 +314,7 @@ class MemoryManager:
 
     def read_float(self, address: int) -> Optional[float]:
         return self._read_typed_value(address, "float")
-    
+
     def write_float(self, address: int, value: float) -> bool:
         if not self.attached or not self._pm:
             return False
@@ -326,7 +327,7 @@ class MemoryManager:
 
     def read_longlong(self, address: int) -> Optional[int]:
         return self._read_typed_value(address, "longlong")
-    
+
     def write_longlong(self, address: int, value: int) -> bool:
         if not self.attached or not self._pm:
             return False
@@ -364,9 +365,9 @@ class MemoryManager:
             self._pm.create_remote_thread(address)
             return True
         except Exception as e:
-            logging.error(f"Failed to create remote thread at {hex(address)}: {e}")
+            logging.error(
+                f"Failed to create remote thread at {hex(address)}: {e}")
             return False
-
 
     # --- helpers --------------------------------------------------------------
 
@@ -514,8 +515,8 @@ class MemoryManager:
             return bases[path_key]
 
         # 2) look in addresses table for pointer-chain entry or a direct AOB definition
-        path_info = self._addresses.get(path_key) # Check in general addresses
-        
+        path_info = self._addresses.get(path_key)  # Check in general addresses
+
         # If not found in addresses, try AOB patterns directly
         aobs = self._aob_patterns
         if path_key in aobs:
@@ -539,7 +540,8 @@ class MemoryManager:
             if s.upper().startswith("AOB:"):
                 # If it's an AOB string *within* the addresses block, treat it like a normal AOB pattern
                 # This ensures it gets cached properly under _aob_scans if its key is used directly.
-                aob_key_for_cache = f"AOB_STR_IN_ADDR:{path_key}" # Unique key for this case
+                # Unique key for this case
+                aob_key_for_cache = f"AOB_STR_IN_ADDR:{path_key}"
                 if aob_key_for_cache not in self._aob_scans:
                     self._aob_scans[aob_key_for_cache] = self._scan_aob(s)
                 addr = self._aob_scans[aob_key_for_cache]
@@ -567,7 +569,7 @@ class MemoryManager:
                 if bs.upper().startswith("AOB:"):
                     # if base is an AOB string, scan it
                     # No specific cache for base AOBs, re-scan if needed or assume _aob_patterns covers it
-                    base_addr = self._scan_aob(bs) 
+                    base_addr = self._scan_aob(bs)
                 else:
                     # named base, hex string, or other key (recursive call)
                     try:
@@ -628,7 +630,8 @@ class MemoryManager:
             return None, None
 
         # determine type from addresses table when available
-        path_info = self._addresses.get(path_key, {}) # Use _addresses, not self.getattr
+        # Use _addresses, not self.getattr
+        path_info = self._addresses.get(path_key, {})
         desired_type = None
         if isinstance(path_info, dict):
             desired_type = path_info.get("type")
