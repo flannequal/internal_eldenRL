@@ -74,8 +74,8 @@ addresses:
     type: bytes
     length: 12
   PlayerFlaskCount:
-    base: GameDataMan # Placeholder: Example base, needs to be found
-    offsets: [0x123, 0x456] # Placeholder: Actual offsets to flask count
+    base: GameDataMan # Placeholder: Actual offsets to flask count need to be found
+    offsets: [0x123, 0x456] # Placeholder: Actual offsets to flask count need to be found
     type: int
   PlayerStats:
     base: GameDataMan
@@ -89,12 +89,11 @@ addresses:
   
   BossAnimation:
     base: WorldChrMan # Boss entity base
-    offsets: [0x123, 0x456, 0x78] # Placeholder: Path to boss animation ID
+    offsets: [0x123, 0x456, 0x78] # Placeholder: Path to boss animation ID needs to be found
     type: int
   BossStaggerFlag:
     base: WorldChrMan # Boss entity base
-    offsets: [0xABC, 0xDEF] # Placeholder: Path to boss stagger flag (e.g., boolean or int)
-    type: int
+    offsets: [0xABC, 0xDEF] # Placeholder: Path to boss stagger flag (e.g., boolean or int) needs to be found
 
 # Helper offsets for list scanning (optional; used for custom boss targeting)
 worldchrman:
