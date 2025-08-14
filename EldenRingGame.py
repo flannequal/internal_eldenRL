@@ -26,7 +26,7 @@ class EldenRingGame:
             raise RuntimeError("Failed to initialize EldenRingGame: MemoryManager attachment failed.")
         
         # Game-specific config and databases
-        self.GAME_MODE = config.get("GAME_MODE", "PVE")
+        # Removed GAME_MODE config, assuming PVE
         self.BOSS = int(config.get("BOSS", 1))
         # Player Max HP for calculations in EldenHybridEnv
         self._player_max_hp_val: Optional[int] = None 

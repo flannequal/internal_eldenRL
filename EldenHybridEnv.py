@@ -40,7 +40,7 @@ class EldenHybridEnv(gym.Env):
         super().__init__()
 
         self.config = config
-        self.GAME_MODE = config.get("GAME_MODE", "PVE")
+        # Removed GAME_MODE config, assuming PVE
         self.BOSS = int(config.get("BOSS", 1))
         self.DESIRED_FPS = float(config.get("DESIRED_FPS", 24))
         self.LOG_MEMORY_DEBUG = bool(config.get("LOG_MEMORY_DEBUG", False))
@@ -77,7 +77,7 @@ class EldenHybridEnv(gym.Env):
             {
                 "img": spaces.Box(low=0, high=255, shape=(MODEL_HEIGHT, MODEL_WIDTH, N_CHANNELS), dtype=np.uint8),
                 "prev_actions": spaces.Box(low=0, high=1, shape=(N_ACTIONS_HISTORY, self.NUMBER_DISCRETE_ACTIONS, 1), dtype=np.uint8),
-                # state: [hp, stamina, boss_hp, time_alive_s, dist_to_boss, time_since_boss_dmg, player_flask_count]
+                # state: [player_hp, player_stamina, boss_hp, time_alive_s, dist_to_boss, time_since_boss_dmg, player_flask_count]
                 "state": spaces.Box(low=-np.inf, high=np.inf, shape=(7,), dtype=np.float32), # Reduced from 10 to 7
             }
         )
@@ -101,7 +101,7 @@ class EldenHybridEnv(gym.Env):
         self.prev_boss_hp = float('nan')
         self.time_since_dmg_taken = time.time()
         self.time_since_boss_dmg = time.time()
-        self.time_since_pvp_damaged = time.time()
+        self.time_since_pvp_damaged = time.time() # This is now unused, but kept for potential future PvP mode
         self.death = False
         self.boss_death = False
         self.game_won = False
@@ -116,7 +116,7 @@ class EldenHybridEnv(gym.Env):
         # Runtime
         self.action_history: list[int] = []
         self.prev_episode_start_time = time.time() # Track start time for time_alive calculation
-        self.prev_boss_animation_id = -1 # Track previous boss animation
+        self.prev_boss_animation_id = -1 # Track previous boss animation (unused in state, but kept for potential future use)
         self.step_iteration = 0
         self.first_step = True
         self.curr_phase = 1.0 # This is now unused in the state vector
@@ -154,7 +154,8 @@ class EldenHybridEnv(gym.Env):
     def _read_state(self):
         hp = self.game.player_hp
         stam = self.game.player_stamina
-        boss_hp = self.game.boss_hp if self.GAME_MODE == "PVE" else 1.0
+        # Removed GAME_MODE check, assuming PVE
+        boss_hp = self.game.boss_hp if hp is not None else 1.0 # Use boss_hp if player_hp is valid
         dist = self.game.distance_to_boss or 0.0 # Use property directly
         time_alive = max(0.0, time.time() - self.prev_episode_start_time) # Use episode start time
         time_since_boss_dmg = max(0.0, time.time() - self.time_since_boss_dmg) # How long since boss was last hit by player
@@ -191,7 +192,8 @@ class EldenHybridEnv(gym.Env):
             self.prev_episode_start_time = time.time() # Re-initialize episode start time
 
         self.death = self.curr_hp <= 0.01
-        self.boss_death = (self.GAME_MODE == "PVE") and (self.curr_boss_hp <= 0.01)
+        # Removed GAME_MODE check, assuming PVE
+        self.boss_death = (self.curr_boss_hp <= 0.01)
 
         # 1) Player HP rewards
         hp_reward = 0
@@ -213,28 +215,28 @@ class EldenHybridEnv(gym.Env):
         no_hit_boss_penalty = 0
         # Removed: stagger_attack_bonus = 0
 
-        if self.GAME_MODE == "PVE":
-            if self.boss_death:
-                boss_dmg_reward = 420 # Huge reward for defeating boss
-            else:
-                # Reward for damaging boss
-                if self.curr_boss_hp < self.prev_boss_hp - 1e-6:
-                    boss_dmg_reward = 100  # Reward for landing a hit
-                    self.time_since_boss_dmg = time.time() # Reset timer since boss was hit
+        # Removed GAME_MODE check, assuming PVE
+        if self.boss_death:
+            boss_dmg_reward = 420 # Huge reward for defeating boss
+        else:
+            # Reward for damaging boss
+            if self.curr_boss_hp < self.prev_boss_hp - 1e-6:
+                boss_dmg_reward = 100  # Reward for landing a hit
+                self.time_since_boss_dmg = time.time() # Reset timer since boss was hit
 
-                # Penalty for not hitting the boss for too long (encourages aggression)
-                time_since_last_hit = time.time() - self.time_since_boss_dmg
-                no_hit_boss_penalty = - (time_since_last_hit * self.NO_BOSS_HIT_PENALTY_PER_SECOND)
-                no_hit_boss_penalty = max(no_hit_boss_penalty, -200) # Cap the penalty
+            # Penalty for not hitting the boss for too long (encourages aggression)
+            time_since_last_hit = time.time() - self.time_since_boss_dmg
+            no_hit_boss_penalty = - (time_since_last_hit * self.NO_BOSS_HIT_PENALTY_PER_SECOND)
+            no_hit_boss_penalty = max(no_hit_boss_penalty, -200) # Cap the penalty
 
-            # Encourage overall progress through the fight (proportional to HP lost)
-            if self.curr_boss_hp < 0.98: # Check for *any* progress past initial full HP
-                progress_reward = (1.0 - self.curr_boss_hp) * self.PROGRESS_REWARD_SCALE
-            
-            # Removed: Bonus for hitting a staggered boss
-            # if boss_is_staggered > 0.5: # Assuming 1.0 for true
-            #     if self.attacked_this_step: 
-            #         stagger_attack_bonus = self.STAGGER_ATTACK_BONUS
+        # Encourage overall progress through the fight (proportional to HP lost)
+        if self.curr_boss_hp < 0.98: # Check for *any* progress past initial full HP
+            progress_reward = (1.0 - self.curr_boss_hp) * self.PROGRESS_REWARD_SCALE
+        
+        # Removed: Bonus for hitting a staggered boss
+        # if boss_is_staggered > 0.5: # Assuming 1.0 for true
+        #     if self.attacked_this_step: 
+        #         stagger_attack_bonus = self.STAGGER_ATTACK_BONUS
 
 
         # 3) General time penalty (encourages efficient play and shorter episodes)
@@ -278,20 +280,14 @@ class EldenHybridEnv(gym.Env):
             self._last_dodge_time = current_time # Update last dodge time
 
         # 6) PvP rewards (placeholder - can be expanded with specific PvP signals if available)
+        # Removed PvP specific reward logic as GAME_MODE is removed
         pvp_reward = 0
-        if self.GAME_MODE != "PVE":
-            if time.time() - self.time_since_pvp_damaged > 5:
-                pvp_reward = -25 # Example penalty for inaction in PvP
-            else:
-                pvp_reward = 0
 
         # 7) Total reward calculation
         total_reward = hp_reward + time_since_taken_dmg_reward + time_alive_penalty + flask_reward + dodge_reward
 
-        if self.GAME_MODE == "PVE":
-            total_reward += boss_dmg_reward + progress_reward + no_hit_boss_penalty # Removed stagger_attack_bonus
-        else: # For PvP mode or other general gameplay
-            total_reward += pvp_reward # Adjust as needed for non-PVE
+        # Removed GAME_MODE check, assuming PVE
+        total_reward += boss_dmg_reward + progress_reward + no_hit_boss_penalty # Removed stagger_attack_bonus
 
         # Update previous HP and boss HP for next step's calculation
         self.prev_hp = self.curr_hp
@@ -398,12 +394,9 @@ class EldenHybridEnv(gym.Env):
             hp, stam, boss_hp, dist, time_alive, time_since_boss_dmg, player_flask_count = self._read_state() # Removed unused params
             
             # Check for valid game state to ensure environment is ready
-            # For PVE, confirm boss HP is loaded; for PvP, player HP is sufficient.
-            if self.GAME_MODE == "PVE" and self.game.boss_hp is not None and self.game.boss_hp <= 1.0: 
+            # Removed GAME_MODE check, assuming PVE
+            if self.game.boss_hp is not None and self.game.boss_hp <= 1.0: 
                 logging.info(f"Successfully read initial boss HP: {self.game.boss_hp:.3f}. Proceeding with reset.")
-                break
-            elif self.GAME_MODE != "PVE" and hp is not None and hp > 0.01: # For PvP, just check player HP
-                logging.info(f"Successfully read initial player HP: {hp:.3f}. Proceeding with reset.")
                 break
             logging.warning(f"Game state not yet resolved (boss HP: {self.game.boss_hp}). Retrying in 1s... ({i+1}/{max_retries})")
             time.sleep(1.0)
@@ -426,7 +419,7 @@ class EldenHybridEnv(gym.Env):
         self.curr_boss_hp = float('nan')
         self.time_since_dmg_taken = time.time()
         self.time_since_boss_dmg = time.time() # Reset for new episode
-        self.time_since_pvp_damaged = time.time()
+        # Removed: self.time_since_pvp_damaged = time.time()
         self.death = False
         self.boss_death = False
         self.game_won = False

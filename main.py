@@ -20,7 +20,7 @@ if __name__ == '__main__':
         env_config = {
             "ENV_MODE": "HYBRID",
             "PROCESS_NAME": "eldenring.exe",
-            "GAME_MODE": "PVE",
+            # Removed GAME_MODE config, assuming PVE
             "BOSS": 8,
             "DESIRED_FPS": 24,
             "SIMULATE_MEMORY": False,
