@@ -52,6 +52,13 @@ class EldenHybridEnv(gym.Env):
         self.TIME_ALIVE_PENALTY_PER_SECOND = float(config.get("TIME_ALIVE_PENALTY_PER_SECOND", 1.0))
         self.NO_BOSS_HIT_PENALTY_PER_SECOND = float(config.get("NO_BOSS_HIT_PENALTY_PER_SECOND", 5.0))
         self.PROGRESS_REWARD_SCALE = float(config.get("PROGRESS_REWARD_SCALE", 150.0))
+        self.HEALING_FLASK_AMOUNT_HP_RATIO = float(config.get("HEALING_FLASK_AMOUNT_HP_RATIO", 0.4)) # e.g. a flask heals 40% of max HP
+        self.FLASK_USAGE_REWARD = float(config.get("FLASK_USAGE_REWARD", 50.0)) # Reward for good flask use
+        self.FLASK_USAGE_PENALTY = float(config.get("FLASK_USAGE_PENALTY", -25.0)) # Penalty for wasteful flask use
+        self.DODGE_SUCCESS_REWARD = float(config.get("DODGE_SUCCESS_REWARD", 20.0)) # Reward for successful dodge
+        self.DODGE_WASTE_PENALTY = float(config.get("DODGE_WASTE_PENALTY", -5.0)) # Penalty for dodging nothing
+        self.STAGGER_ATTACK_BONUS = float(config.get("STAGGER_ATTACK_BONUS", 100.0)) # Bonus for hitting staggered boss
+        
         # For debug overlay
         self.font = cv2.FONT_HERSHEY_SIMPLEX
         self.font_scale = 0.5
