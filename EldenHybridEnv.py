@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 import cv2
 import gymnasium as gym
@@ -8,9 +8,8 @@ import mss
 import numpy as np
 from gymnasium import spaces
 
-from EldenRewardMemory import EldenRewardMemory
 from InputController import InputController
-from MemoryClient import MemoryClient
+from EldenRingGame import EldenRingGame
 
 
 # Image/capture settings (match legacy env defaults)
@@ -68,19 +67,27 @@ class EldenHybridEnv(gym.Env):
 
         # Systems
         self.sct = mss.mss()
-        logging.info("Initializing MemoryClient...")
-        self.mem = MemoryClient(
-            process_name=config.get("PROCESS_NAME", "eldenring.exe")
+        logging.info("Initializing EldenRingGame...")
+        self.game = EldenRingGame(
+            process_name=config.get("PROCESS_NAME", "eldenring.exe"),
+            config=config # Pass full config to EldenRingGame for its settings
         )
-        
-        # Attempt to attach and resolve essential addresses immediately
-        if not self.mem.attach():
-            logging.error("Failed to attach to Elden Ring process or resolve essential memory addresses. Please ensure the game is running and the configuration is correct.")
-            raise RuntimeError("Failed to initialize MemoryClient.")
-        logging.info("MemoryClient initialized and attached.")
+        logging.info("EldenRingGame initialized and attached.")
 
-        self.rewardGen = EldenRewardMemory(config)
         self.input = InputController(enabled=not bool(config.get("DISABLE_INPUT", False)))
+
+        # Reward system internal state (moved from EldenRewardMemory)
+        self.prev_hp = float('nan')
+        self.curr_hp = float('nan')
+        self.curr_stam = float('nan')
+        self.curr_boss_hp = float('nan')
+        self.prev_boss_hp = float('nan')
+        self.time_since_dmg_taken = time.time()
+        self.time_since_boss_dmg = time.time()
+        self.time_since_pvp_damaged = time.time()
+        self.death = False
+        self.boss_death = False
+        self.game_won = False
 
         # Runtime
         self.action_history: list[int] = []
@@ -89,25 +96,6 @@ class EldenHybridEnv(gym.Env):
         self.step_iteration = 0
         self.first_step = True
         self.curr_phase = 1.0
-
-        # Check if essential memory addresses are resolved after attachment
-        if not self._check_essential_addresses():
-            raise RuntimeError("Essential memory addresses could not be resolved. Cannot proceed.")
-
-    def _check_essential_addresses(self) -> bool:
-        """Checks if critical memory addresses are resolved."""
-        if not self.mem.attached:
-            logging.error("MemoryClient is not attached.")
-            return False
-        
-        # Check for addresses that are critical for basic operation
-        critical_addresses = ["WorldChrMan", "CSLuaEventManager", "PlayerHP", "PlayerSP", "PlayerXYZA"]
-        for addr_key in critical_addresses:
-            if self.mem._resolve_pointer_path(addr_key) is None:
-                logging.error(f"Critical address '{addr_key}' could not be resolved.")
-                return False
-        logging.info("All essential memory addresses resolved successfully.")
-        return True
 
     # ----- Helpers -----
     def _one_hot_prev_actions(self):
@@ -140,12 +128,85 @@ class EldenHybridEnv(gym.Env):
         return obs
 
     def _read_state(self):
-        hp = self.mem.read_player_hp()
-        stam = self.mem.read_player_stamina()
-        boss_hp = self.mem.read_boss_hp() if self.GAME_MODE == "PVE" else 1.0
-        dist = self.mem.read_distance_to_boss() or 0.0
+        hp = self.game.player_hp
+        stam = self.game.player_stamina
+        boss_hp = self.game.boss_hp if self.GAME_MODE == "PVE" else 1.0
+        dist = self.game.distance_to_boss or 0.0 # Use property directly
         time_alive = max(0.0, time.time() - self.time_alive_ref)
-        return float(hp), float(stam), float(boss_hp), float(dist), float(time_alive), float(self.curr_phase)
+        return float(hp if hp is not None else 0.0), \
+               float(stam if stam is not None else 0.0), \
+               float(boss_hp if boss_hp is not None else 1.0), \
+               float(dist), \
+               float(time_alive), \
+               float(self.curr_phase)
+
+    def _compute_reward_and_termination(self, curr_hp: float, curr_stam: float, curr_boss_hp: float, first_step: bool):
+        """Compute reward using precise memory values.
+
+        Returns (total_reward, death, boss_death, game_won)
+        """
+        # 1) Current values
+        self.curr_hp = max(0.0, min(1.0, float(curr_hp)))
+        self.curr_stam = max(0.0, min(1.0, float(curr_stam)))
+        self.curr_boss_hp = max(0.0, min(1.0, float(curr_boss_hp)))
+        if first_step:
+            self.time_since_dmg_taken = time.time() - 10 # Initialize to avoid early penalty
+
+        self.death = self.curr_hp <= 0.01
+        self.boss_death = (self.GAME_MODE == "PVE") and (self.curr_boss_hp <= 0.01)
+
+        # 2) HP rewards
+        hp_reward = 0
+        if not self.death:
+            if self.curr_hp > self.prev_hp + 1e-6:
+                hp_reward = 100
+            elif self.curr_hp < self.prev_hp - 1e-6:
+                hp_reward = -69
+                self.time_since_dmg_taken = time.time()
+        else:
+            hp_reward = -420
+
+        time_since_taken_dmg_reward = 25 if (time.time() - self.time_since_dmg_taken > 5) else 0
+
+        self.prev_hp = self.curr_hp
+
+        # 3) Boss rewards (PVE only)
+        boss_dmg_reward = 0
+        progress_reward = 0
+        if self.GAME_MODE == "PVE":
+            if self.boss_death:
+                boss_dmg_reward = 420
+            else:
+                # Reward strictly on boss HP decrease
+                if self.curr_boss_hp < self.prev_boss_hp - 1e-6:
+                    boss_dmg_reward = 100  # Increased reward for landing a hit
+                    self.time_since_boss_dmg = time.time()
+                elif time.time() - self.time_since_boss_dmg > 8: # Increased penalty timer
+                    boss_dmg_reward = -50
+            # Encourage progress through the fight with a more significant reward
+            if self.curr_boss_hp < 0.98: # Check for *any* progress past initial full HP
+                progress_reward = (1.0 - self.curr_boss_hp) * 150 # Scales with how much HP is lost
+
+        # 4) PvP rewards
+        pvp_reward = 0
+        if self.GAME_MODE != "PVE":
+            # With exact values we cannot detect damage flashes; keep time-based shaping only.
+            # This logic might need further refinement for PvP if specific signals are available
+            if time.time() - self.time_since_pvp_damaged > 5:
+                pvp_reward = -25 # Placeholder/example
+            else:
+                pvp_reward = 0
+
+        # 5) Total
+        if self.GAME_MODE == "PVE":
+            total_reward = hp_reward + boss_dmg_reward + time_since_taken_dmg_reward + progress_reward
+        else:
+            total_reward = hp_reward + time_since_taken_dmg_reward + pvp_reward
+
+        # Update previous boss hp tracker last
+        self.prev_boss_hp = self.curr_boss_hp
+
+        return round(total_reward, 3), self.death, self.boss_death, self.game_won # self.game_won is always False for now
 
     # ----- Gym API -----
     def step(self, action: int):
@@ -164,23 +225,22 @@ class EldenHybridEnv(gym.Env):
                 "state": np.zeros(6, dtype=np.float32),
             }, 0.0, True, False, {}
 
-        reward, death, boss_death, duel_won = self.rewardGen.update(
+        reward, death, boss_death, duel_won = self._compute_reward_and_termination(
             hp, stam, boss_hp, self.first_step
         )
 
         # Optional debug logging for memory values
         if self.LOG_MEMORY_DEBUG and (self.step_iteration % max(1, self.MEMORY_DEBUG_INTERVAL) == 0):
             try:
-                pos = self.mem.read_player_position()
+                pos = self.game.player_position
                 logging.info(
                     f"[MEM] step={self.step_iteration} hp={hp:.3f} stam={stam:.3f} boss_hp={boss_hp:.3f} "
-                    f"pos=({pos[0]}, {pos[1]}, {pos[2]}) dist={dist:.3f} time_alive={time_alive:.2f}s"
+                    f"pos=({pos[0] if pos else 'N/A'}, {pos[1] if pos else 'N/A'}, {pos[2] if pos else 'N/A'}) dist={dist:.3f} time_alive={time_alive:.2f}s"
                 )
-            except Exception:
-                pos = (None, None, None)
+            except Exception as e:
                 logging.info(
                     f"[MEM] step={self.step_iteration} hp={hp:.3f} stam={stam:.3f} boss_hp={boss_hp:.3f} "
-                    f"pos=({pos[0]}, {pos[1]}, {pos[2]}) dist={dist:.3f} time_alive={time_alive:.2f}s"
+                    f"pos=(N/A, N/A, N/A) dist={dist:.3f} time_alive={time_alive:.2f}s (Error getting player pos: {e})"
                 )
 
         terminated = bool(death or boss_death or duel_won)
@@ -216,18 +276,9 @@ class EldenHybridEnv(gym.Env):
     def reset(self, *, seed: int | None = None, options: Dict[str, Any] | None = None):
         super().reset(seed=seed)
         
-        # Ensure MemoryClient is attached and essential addresses are resolved
-        if not self.mem.attached or not self._check_essential_addresses():
-            logging.error("MemoryClient not attached or essential addresses not resolved. Cannot reset.")
-            # Return a default state to prevent further errors, but training should ideally stop.
-            return {
-                "img": np.zeros((MODEL_HEIGHT, MODEL_WIDTH, N_CHANNELS), dtype=np.uint8),
-                "prev_actions": np.zeros((N_ACTIONS_HISTORY, self.NUMBER_DISCRETE_ACTIONS, 1), dtype=np.uint8),
-                "state": np.zeros(6, dtype=np.float32),
-            }, {}
-
         # Memory-based instant reset
-        self.mem.reset_arena(self.BOSS, second_phase=False)
+        # EldenRingGame handles attachment and essential address checks in its __init__
+        self.game.reset_arena(self.BOSS, second_phase=False)
         
         # Give the game a moment to load after teleport
         logging.info("Waiting for game to load after teleport...")
@@ -237,14 +288,19 @@ class EldenHybridEnv(gym.Env):
         max_retries = 3 # Reduced retries as we want to fail fast
         for i in range(max_retries):
             hp, stam, boss_hp, dist, time_alive, phase = self._read_state()
-            if boss_hp is not None and boss_hp < 1.0: # Check for valid boss HP
-                logging.info(f"Successfully read initial boss HP: {boss_hp:.3f}. Proceeding with reset.")
+            # Check for valid boss HP (meaning boss is loaded and game state is readable)
+            # Use self.game.boss_hp to ensure we're reading from the EldenRingGame API
+            if self.GAME_MODE == "PVE" and self.game.boss_hp is not None and self.game.boss_hp < 1.0: 
+                logging.info(f"Successfully read initial boss HP: {self.game.boss_hp:.3f}. Proceeding with reset.")
                 break
-            logging.warning(f"Boss HP not yet resolved (is {boss_hp}). Retrying in 1s... ({i+1}/{max_retries})")
+            elif self.GAME_MODE != "PVE" and hp is not None and hp > 0.01: # For PVP, just check player HP
+                logging.info(f"Successfully read initial player HP: {hp:.3f}. Proceeding with reset.")
+                break
+            logging.warning(f"Game state not yet resolved (boss HP: {self.game.boss_hp}). Retrying in 1s... ({i+1}/{max_retries})")
             time.sleep(1.0)
         else:
-            logging.error("Failed to resolve boss HP after multiple retries. Reset may be unstable.")
-            # Return a default state if boss HP is still not resolved
+            logging.error("Failed to resolve stable game state after multiple retries. Reset may be unstable.")
+            # Return a default state if game state is still not resolved
             return {
                 "img": np.zeros((MODEL_HEIGHT, MODEL_WIDTH, N_CHANNELS), dtype=np.uint8),
                 "prev_actions": np.zeros((N_ACTIONS_HISTORY, self.NUMBER_DISCRETE_ACTIONS, 1), dtype=np.uint8),
@@ -253,6 +309,18 @@ class EldenHybridEnv(gym.Env):
 
         self.time_alive_ref = time.time()
         self.curr_phase = 1.0
+        
+        # Reset reward system internal state for new episode
+        self.prev_hp = float('nan') # Reset to NaN so first HP read triggers update
+        self.curr_hp = float('nan')
+        self.prev_boss_hp = float('nan')
+        self.curr_boss_hp = float('nan')
+        self.time_since_dmg_taken = time.time()
+        self.time_since_boss_dmg = time.time()
+        self.time_since_pvp_damaged = time.time()
+        self.death = False
+        self.boss_death = False
+        self.game_won = False
 
         # Reset trackers
         self.step_iteration = 0
@@ -274,5 +342,5 @@ class EldenHybridEnv(gym.Env):
         pass
 
     def close(self):
-        self.mem.detach()
+        self.game.close() # Call close method on EldenRingGame
         cv2.destroyAllWindows()
