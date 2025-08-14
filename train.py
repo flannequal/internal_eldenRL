@@ -45,10 +45,6 @@ def train(CREATE_NEW_MODEL, config):
         logging.error(f"An unexpected error occurred during EldenHybridEnv initialization: {e}")
         sys.exit(1)
 
-    # Check if the environment is valid and memory is hooked before proceeding
-    if not env.mem.attached or not env._check_essential_addresses():
-        logging.error("Environment not properly initialized or memory not hooked. Exiting training.")
-        sys.exit(1)
 
     if CREATE_NEW_MODEL or not os.path.exists(model_path):
         model = PPO('MultiInputPolicy',
