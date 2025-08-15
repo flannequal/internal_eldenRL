@@ -39,33 +39,16 @@ class MemoryManager:
             return {}
 
     def _load_configs(self):
+        """Loads configurations from YAML. Stores RVAs as integers."""
         logging.info(
             f"Loading memory configurations from {self.addresses_config_path}...")
         addresses_yaml = self._safe_load_yaml(self.addresses_config_path)
 
-        self._bases_static = {}
-        self._aob_patterns = {}
-        self._addresses = {}
+        # This dictionary will TEMPORARILY hold the Relative Virtual Addresses (RVAs)
+        self._bases_static = addresses_yaml.get("bases_static", {})
 
-        # Load static addresses
-        for name, value in addresses_yaml.get("bases_static", {}).items():
-            try:
-                self._bases_static[name] = int(str(value), 16)
-            except ValueError:
-                logging.warning(
-                    f"Could not convert '{value}' to a base address for '{name}'."
-                )
-
-        # Load AOB patterns
-        for name, pattern in addresses_yaml.get("bases_aob", {}).items():
-            if isinstance(pattern, str):
-                self._aob_patterns[name] = pattern.strip()
-            else:
-                logging.warning(
-                    f"Invalid AOB pattern type for '{name}': {type(pattern)}"
-                )
-
-        # Load generic pointer chain definitions
+        # Load other configs
+        self._aob_patterns = addresses_yaml.get("bases_aob", {})
         self._addresses = addresses_yaml.get("addresses", {})
 
     def _parse_aob_pattern(self, aob_pattern_str: str):
@@ -158,22 +141,20 @@ class MemoryManager:
             logging.warning(f"Empty/invalid AOB pattern: '{aob_pattern_str}'")
             return None
 
-        # Modules to try (main module first, then common DLL where game logic resides)
         modules_to_try = []
         if getattr(self, "_module", None):
             modules_to_try.append(self._module)
 
-        # Try GameAssembly.dll and a few other common names (extend as needed)
-        try:
-            all_mods = pymem.process.list_modules(self._pm.process_handle)
-            preferred = {"gameassembly.dll", self.process_name.lower()}
-            # add preferred modules first if present
-            for mod in all_mods:
-                name = getattr(mod, "name", "").lower()
-                if name in preferred and mod not in modules_to_try:
-                    modules_to_try.append(mod)
-        except Exception as e:
-            logging.debug(f"Could not list modules: {e}")
+        # try:
+        #     all_mods = self._pm.list_modules()
+        #     preferred = {"gameassembly.dll", self.process_name.lower()}
+        #     # add preferred modules first if present
+        #     for mod in all_mods:
+        #         name = getattr(mod, "name", "").lower()
+        #         if name in preferred and mod not in modules_to_try:
+        #             modules_to_try.append(mod)
+        # except Exception as e:
+        #     logging.debug(f"Could not list modules: {e}")
 
         for mod in modules_to_try:
             try:
@@ -210,6 +191,7 @@ class MemoryManager:
         return None
 
     def attach(self) -> bool:
+        """Attaches to the process and calculates absolute pointer addresses."""
         if self.attached and self._pm:
             return True
         if time.time() - self._last_attach_attempt < 2.0:
@@ -222,32 +204,36 @@ class MemoryManager:
                 self._pm.process_handle, self.process_name
             )
             if not self._module:
-                logging.error(f"Could not find module '{self.process_name}'.")
+                logging.error(f"could not find module '{self.process_name}'.")
                 self.detach()
                 return False
 
-            logging.info(f"Module {self._module.name} found at {hex(self._module.lpBaseOfDll)} "
-                         f"size {hex(self._module.SizeOfImage)}")
-
             self.attached = True
             logging.info(
-                f"Successfully attached to process '{self.process_name}' (PID: {self._pm.process_id})."
-            )
+                f"successfully attached to process '{self.process_name}' (PID: {self._pm.process_id}).")
 
-            # Perform AOB scans on attach and cache results
+            module_base = self._module.lpBaseOfDll
+
+            absolute_base_pointers = {}
+            for name, rva in self._bases_static.items():
+                absolute_base_pointers[name] = module_base + rva
+
+            self._bases_static = absolute_base_pointers
+
+            logging.debug(
+                f"Correctly calculated 'WorldChrMan' pointer address to: {hex(self._bases_static.get('WorldChrMan', 0))}")
+
+            # Initialize and perform AOB scans
+            self._aob_scans = {}
             for name, aob_pattern in self._aob_patterns.items():
-                # Only scan if not already a static address (e.g., if it's explicitly defined in bases_static)
-                if name not in self._bases_static:
-                    resolved_addr = self._scan_aob(aob_pattern)
-                    if resolved_addr:
-                        # Cache the resolved address
-                        self._bases_static[name] = resolved_addr
+                resolved_addr = self._scan_aob(aob_pattern)
+                if resolved_addr:
+                    self._bases_static[name] = resolved_addr
+                    self._aob_scans[name] = resolved_addr
 
             return True
         except pymem.exception.ProcessNotFound:
-            logging.warning(
-                f"Process '{self.process_name}' not found. Is the game running?"
-            )
+            logging.warning(f"Process '{self.process_name}' not found.")
             return False
         except Exception as e:
             logging.error(f"Failed to attach to process: {e}")
@@ -448,339 +434,76 @@ class MemoryManager:
         logging.warning(f"Unsupported offset type: {type(off)}")
         return None
 
-    def _follow_pointer_chain(self,
-                              base_spec,
-                              offsets,
-                              deref_before_add: bool = True,
-                              deref_final: bool = True,
-                              _visited: Optional[set] = None) -> Optional[int]:
+    def _follow_pointer_chain(self, base_addr: int, offsets: list[int]) -> Optional[int]:
         """
-        Follow a pointer chain and return the final address (not the value at it).
-
-        Parameters:
-        - base_spec: int (absolute address) or str (name/AOB/hex-string) -- will be resolved
-        - offsets: iterable of ints or strings (hex or decimal)
-        - deref_before_add: if True, use CHEAT-ENGINE style: addr = current + off; ptr = read_ptr(addr)
-                            if False, use read-then-add: ptr = read_ptr(current); next = ptr + off
-        - deref_final: if True, dereference the final computed address (return the pointer read);
-                        if False, return the final computed address itself.
-        - _visited: optional set from _resolve_pointer_path to prevent recursion (pass-through)
-        """
-        # Normalize offsets into ints
-        parsed_offsets = []
-        for o in offsets or []:
-            try:
-                parsed_offsets.append(
-                    int(o, 0) if isinstance(o, str) else int(o))
-            except Exception:
-                logging.warning(
-                    "_follow_pointer_chain: invalid offset '%s' (skipping)", o)
-                continue
-
-        # Resolve base_spec:
-        base_addr = None
-        # If passed an integer already, take it literally
-        if isinstance(base_spec, int):
-            base_addr = base_spec
-            logging.warning(
-                "_follow_pointer_chain: numeric base %s", hex(base_addr))
-        else:
-            # base_spec expected to be a string: could be hex string, AOB:, named key, or module_base
-            bs = str(base_spec).strip()
-            if bs.upper().startswith("AOB:"):
-                # use your existing aob scan helper
-                base_addr = self._scan_aob(bs)
-                logging.warning("_follow_pointer_chain: base AOB '%s' scanned -> %s",
-                                bs, None if base_addr is None else hex(base_addr))
-            else:
-                # try parse as hex literal first
-                try:
-                    base_addr = int(bs, 16)
-                    logging.warning(
-                        "_follow_pointer_chain: base hex string '%s' -> %s", bs, hex(base_addr))
-                except ValueError:
-                    # treat as named key: use _resolve_pointer_path but pass _visited to avoid recursion
-                    try:
-                        if _visited is None:
-                            base_addr = self._resolve_pointer_path(bs)
-                        else:
-                            base_addr = self._resolve_pointer_path(
-                                bs, _visited)
-                    except Exception as e:
-                        logging.exception(
-                            "_follow_pointer_chain: exception resolving base key '%s': %s", bs, e)
-                        base_addr = None
-                    logging.warning("_follow_pointer_chain: base key '%s' resolved -> %s",
-                                    bs, None if base_addr is None else hex(base_addr))
-
-        if base_addr is None:
-            logging.warning(
-                "_follow_pointer_chain: base could not be resolved (%s)", repr(base_spec))
-            return None
-
-        if not parsed_offsets:
-            logging.warning(
-                "_follow_pointer_chain: no offsets -> returning base %s", hex(base_addr))
-            return base_addr
-
-        # Choose pointer read function (prefer 64-bit)
-        if hasattr(self, "read_longlong") and callable(getattr(self, "read_longlong")):
-            ptr_read = self.read_longlong
-            ptr_size = 8
-        elif hasattr(self, "read_int") and callable(getattr(self, "read_int")):
-            ptr_read = self.read_int
-            ptr_size = 4
-        else:
-            logging.warning(
-                "_follow_pointer_chain: no pointer read available (read_longlong/read_int)")
-            return None
-
-        current = base_addr
-        logging.warning("_follow_pointer_chain: starting base=%s offsets=%s deref_before_add=%s deref_final=%s ptr_size=%d",
-                        hex(base_addr), [hex(x) for x in parsed_offsets], deref_before_add, deref_final, ptr_size)
-
-        # Walk chain
-        for i, off in enumerate(parsed_offsets):
-            is_last = (i == len(parsed_offsets) - 1)
-
-            if deref_before_add:
-                # CHEAT-ENGINE style: compute addr = current + off, then read pointer at addr
-                addr_to_read = current + off
-                try:
-                    ptr_val = ptr_read(addr_to_read)
-                except Exception as e:
-                    logging.exception("_follow_pointer_chain: exception reading pointer at %s step %d: %s",
-                                      hex(addr_to_read), i, e)
-                    return None
-
-                if ptr_val is None:
-                    logging.warning(
-                        "_follow_pointer_chain: read_ptr returned None at %s step %d", hex(addr_to_read), i)
-                    return None
-
-                # normalize unsigned representation
-                if ptr_size == 8:
-                    ptr_val = int(ptr_val) & ((1 << 64) - 1)
-                else:
-                    ptr_val = int(ptr_val) & ((1 << 32) - 1)
-
-                logging.warning("_follow_pointer_chain: step %d: read_ptr(%s) -> %s; offset=%s",
-                                i, hex(addr_to_read), hex(ptr_val), hex(off))
-
-                if is_last:
-                    if deref_final:
-                        logging.warning(
-                            "_follow_pointer_chain: final (deref) -> %s", hex(ptr_val))
-                        return ptr_val
-                    else:
-                        logging.warning(
-                            "_follow_pointer_chain: final (addr) -> %s", hex(addr_to_read))
-                        return addr_to_read
-                else:
-                    current = ptr_val
-
-            else:
-                # read-then-add: ptr = read_ptr(current); next = ptr + off
-                try:
-                    ptr_val = ptr_read(current)
-                except Exception as e:
-                    logging.exception("_follow_pointer_chain: exception reading pointer at %s step %d: %s",
-                                      hex(current), i, e)
-                    return None
-
-                if ptr_val is None:
-                    logging.warning(
-                        "_follow_pointer_chain: read_ptr returned None at %s step %d", hex(current), i)
-                    return None
-
-                if ptr_size == 8:
-                    ptr_val = int(ptr_val) & ((1 << 64) - 1)
-                else:
-                    ptr_val = int(ptr_val) & ((1 << 32) - 1)
-
-                next_addr = ptr_val + off
-                logging.warning("_follow_pointer_chain: step %d: read_ptr(%s) -> %s; + offset %s => next %s",
-                                i, hex(current), hex(ptr_val), hex(off), hex(next_addr))
-
-                if is_last:
-                    if deref_final:
-                        # final dereference of next_addr
-                        try:
-                            final_ptr = ptr_read(next_addr)
-                        except Exception as e:
-                            logging.exception(
-                                "_follow_pointer_chain: exception reading final pointer at %s: %s", hex(next_addr), e)
-                            return None
-                        if final_ptr is None:
-                            logging.warning(
-                                "_follow_pointer_chain: final read returned None at %s", hex(next_addr))
-                            return None
-                        if ptr_size == 8:
-                            final_ptr = int(final_ptr) & ((1 << 64) - 1)
-                        else:
-                            final_ptr = int(final_ptr) & ((1 << 32) - 1)
-                        logging.warning(
-                            "_follow_pointer_chain: final (deref) -> %s", hex(final_ptr))
-                        return final_ptr
-                    else:
-                        logging.warning(
-                            "_follow_pointer_chain: final (addr) -> %s", hex(next_addr))
-                        return next_addr
-                else:
-                    current = next_addr
-
-        # fallback
-        logging.warning(
-            "_follow_pointer_chain: fell out, returning current %s", hex(current))
-        return current
-
-
-# --- main resolver/reader -----------------------------------------------
-
-
-    def _resolve_pointer_path(self, path_key: str, _visited: Optional[set] = None) -> Optional[int]:
-        """
-        Resolve the name `path_key` to a numeric address.
-        Supports:
-        - static bases in self._bases_static (already parsed ints)
-        - aob patterns in self._aob_patterns (scanned)
-        - pointer-chain dicts under self._addresses (with keys: base, offsets)
-        Prevents recursion loops with _visited set.
+        Follows a pointer chain to resolve the final memory address.
+        This function uses the proven logic from the standalone test script.
         """
         if not self.attached or not self._pm:
             return None
 
-        if _visited is None:
-            _visited = set()
-        if path_key in _visited:
-            logging.warning(
-                f"_resolve_pointer_path: recursive reference detected for '{path_key}'")
-            return None
-        _visited.add(path_key)
+        addr = base_addr
 
-        # 1) direct static base
-        bases = self._bases_static
-        if path_key in bases:
-            logging.debug(
-                f"_resolve_pointer_path: '{path_key}' found in bases_static -> {hex(bases[path_key])}")
-            return bases[path_key]
-
-        # This method's logic should generally remain unchanged, but ensuring correct use of _aob_scans cache
-        # 1) direct static base
-        bases = self._bases_static
-        if path_key in bases:
-            logging.debug(
-                f"_resolve_pointer_path: '{path_key}' found in bases_static -> {hex(bases[path_key])}")
-            return bases[path_key]
-
-        # 2) look in addresses table for pointer-chain entry or a direct AOB definition
-        path_info = self._addresses.get(path_key)  # Check in general addresses
-
-        # If not found in addresses, try AOB patterns directly
-        aobs = self._aob_patterns
-        if path_key in aobs:
-            if path_key not in self._aob_scans:
-                self._aob_scans[path_key] = self._scan_aob(aobs[path_key])
-            addr = self._aob_scans[path_key]
-            logging.debug(
-                f"_resolve_pointer_path: '{path_key}' found in aob_patterns (scanned) -> {addr if addr is None else hex(addr)}")
-            return addr
-
-        if path_info is None:
-            logging.debug(
-                f"_resolve_pointer_path: '{path_key}' not in addresses table, static bases, or AOB patterns")
-            return None
-
-        # If the config has a plain integer or hex string (e.g., direct address)
-        if isinstance(path_info, int):
-            return path_info
-        if isinstance(path_info, str):
-            s = path_info.strip()
-            if s.upper().startswith("AOB:"):
-                # If it's an AOB string *within* the addresses block, treat it like a normal AOB pattern
-                # This ensures it gets cached properly under _aob_scans if its key is used directly.
-                # Unique key for this case
-                aob_key_for_cache = f"AOB_STR_IN_ADDR:{path_key}"
-                if aob_key_for_cache not in self._aob_scans:
-                    self._aob_scans[aob_key_for_cache] = self._scan_aob(s)
-                addr = self._aob_scans[aob_key_for_cache]
-                logging.debug(
-                    f"_resolve_pointer_path: '{path_key}' found as direct AOB string (scanned) -> {addr if addr is None else hex(addr)}")
-                return addr
+        # Dereference all offsets except the last one
+        for i, offset in enumerate(offsets[:-1]):
             try:
-                return int(s, 16)
-            except ValueError:
-                # try treat as reference to another key (recursive)
-                return self._resolve_pointer_path(s, _visited)
-
-        # If dict -> expect base + offsets (offsets optional)
-        if isinstance(path_info, dict):
-            base_spec = path_info.get("base") or path_info.get(
-                "address") or path_info.get("module_base")
-            offsets_spec = path_info.get(
-                "offsets") or path_info.get("pointer_offsets") or []
-            # resolve base_spec
-            base_addr = None
-            if isinstance(base_spec, int):
-                base_addr = base_spec
-            elif isinstance(base_spec, str):
-                bs = base_spec.strip()
-                if bs.upper().startswith("AOB:"):
-                    # if base is an AOB string, scan it
-                    # No specific cache for base AOBs, re-scan if needed or assume _aob_patterns covers it
-                    base_addr = self._scan_aob(bs)
-                else:
-                    # named base, hex string, or other key (recursive call)
-                    try:
-                        base_addr = int(bs, 16)
-                    except ValueError:
-                        # treat as named key (recursive call)
-                        base_addr = self._resolve_pointer_path(bs, _visited)
-            else:
-                logging.warning(
-                    f"_resolve_pointer_path: unsupported base_spec type for '{path_key}': {type(base_spec)}")
-                return None
-
-            logging.debug(
-                f"_resolve_pointer_path: for '{path_key}': base_spec={base_spec!r} resolved to {None if base_addr is None else hex(base_addr)}")
-            logging.debug(f"_resolve_pointer_path: offsets_raw={offsets_spec}")
-            if base_addr is None:
-                logging.warning(
-                    f"_resolve_pointer_path: base for '{path_key}' could not be resolved: {base_spec}")
-                return None
-
-            # parse offsets into ints
-            offsets = []
-            for o in offsets_spec:
-                parsed = self._parse_offset(o)
-                if parsed is None:
+                addr = self._pm.read_longlong(addr + offset)
+                if addr == 0:
                     logging.warning(
-                        f"_resolve_pointer_path: skipping invalid offset '{o}' for '{path_key}'")
-                    continue
-                offsets.append(parsed)
+                        f"Pointer chain resolving to NULL at step {i} (offset {hex(offset)})")
+                    return None
+            except Exception as e:
+                logging.error(
+                    f"Failed to read pointer in chain at step {i} (address {hex(addr + offset)}): {e}")
+                return None
 
-            if not offsets:
-                # no offsets: base_addr is the final address
-                logging.debug(
-                    f"_resolve_pointer_path: '{path_key}' resolved to base {hex(base_addr)} (no offsets)")
-                return base_addr
+        # Add the final offset to get the address of the actual value
+        return addr + offsets[-1]
 
-            # follow pointer chain — pass the original base_spec and the _visited set to avoid recursion issues
-            final = self._follow_pointer_chain(base_spec, offsets,
-                                               deref_before_add=True,
-                                               deref_final=True,
-                                               _visited=_visited)
-            if final is None:
-                logging.warning(
-                    f"_resolve_pointer_path: failed to follow pointer chain for '{path_key}' (base {hex(base_addr)})")
-            else:
-                logging.debug(
-                    f"_resolve_pointer_path: '{path_key}' resolved to {hex(final)}")
-            return final
+    def _resolve_pointer_path(self, path_key: str) -> Optional[int]:
+        """Resolves an address key to its final, absolute memory address."""
+        if not self.attached or not self._pm:
+            return None
 
-        logging.warning(
-            f"_resolve_pointer_path: unsupported address format for '{path_key}' ({type(path_info)})")
-        return None
+        path_info = self._addresses.get(path_key)
+        if not isinstance(path_info, dict):
+            logging.warning(
+                f"Address key '{path_key}' not found or not a valid structure in config.")
+            return None
+
+        # step1 resolve the base name e.g WorldChrMan
+        base_name = path_info.get("base")
+        if not base_name:
+            logging.warning(f"No 'base' specified for '{path_key}'")
+            return None
+
+        # Look up the absolute address of the static pointer (calculated in attach)
+        static_pointer_addr = self._bases_static.get(base_name)
+        if static_pointer_addr is None:
+            logging.warning(
+                f"Could not find the static pointer address for base '{base_name}'")
+            return None
+
+        try:
+            # step 2 dereference the pointer to get the true base address
+            true_base_addr = self._pm.read_longlong(static_pointer_addr)
+            if true_base_addr == 0:
+                logging.warning(f"Base pointer for '{base_name}' is NULL.")
+                return None
+        except Exception as e:
+            logging.error(
+                f"Failed to read/dereference base pointer for '{base_name}' at {hex(static_pointer_addr)}: {e}")
+            return None
+
+        # step 3 follow the offset chain
+        offsets_spec = path_info.get("offsets", [])
+        if not offsets_spec:
+            return true_base_addr  # No offsets, return the dereferenced base
+
+        offsets = [int(o, 0) if isinstance(o, str) else int(o)
+                   for o in offsets_spec]
+
+        return self._follow_pointer_chain(true_base_addr, offsets)
 
     def get_address_value(self, path_key: str):
         """
