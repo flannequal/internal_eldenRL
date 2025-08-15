@@ -3,7 +3,7 @@ import train
 import logging
 
 logging.basicConfig(level=logging.DEBUG,
-                    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+                    format="%(levelname)s  - %(message)s",
                     force=True)  # force=True ensures reconfiguration in recent Python versions
 
 # Also set the root logger and all existing handlers to DEBUG to be safe
