@@ -11,7 +11,7 @@ from MemoryManager import MemoryManager
 
 
 class EldenRingGame:
-    """Elden Ring game interface providing a high-level API for game state and actions.
+    """interface providing a high-level API for game state and actions.
     It uses MemoryManager for low-level memory access and abstracts away pointer chains.
     """
 
@@ -35,7 +35,6 @@ class EldenRingGame:
         self._bonfires_db: Dict[str, int] = {}
         self._wcm_offsets: Dict[str, int] = {}
         self._char_offsets: Dict[str, int] = {}
-        self._aob_scans: Dict[str, int] = {}
 
         self._load_game_configs()
 
@@ -45,18 +44,7 @@ class EldenRingGame:
         self._boss_comp_addr: int = 0
         self._boss_transform_addr: int = 0
         self._boss_last_resolve: float = 0.0
-        self._boss_resolve_retry_sec: float = 1.0
-
-        # Check essential addresses after attaching and loading configs
-        if not self._check_essential_game_addresses():
-            logging.error(
-                "Essential game-specific memory addresses could not be resolved. Cannot proceed.")
-            self.mem.detach()
-            raise RuntimeError(
-                "Failed to initialize EldenRingGame: Essential addresses not resolved.")
-        print(self.player_hp(self))
-        logging.info(
-            "EldenRingGame initialized and essential addresses resolved.")
+        self._boss_resolve_retry_sec: float = 1.
 
     def _safe_load_yaml(self, path: str) -> Dict[str, Any]:
         if not os.path.isfile(path):
@@ -87,24 +75,6 @@ class EldenRingGame:
             os.path.join("config", "addresses.yaml"))
         self._wcm_offsets = addresses_yaml.get("worldchrman", {})
         self._char_offsets = addresses_yaml.get("character", {})
-
-    def _check_essential_game_addresses(self) -> bool:
-        """Checks if critical game-specific memory addresses (beyond just base addresses) are resolvable."""
-        if not self.mem.attached:
-            logging.error("MemoryManager is not attached.")
-            return False
-
-        # These are critical for the EldenRingGame to function
-        critical_game_addresses = ["WorldChrMan", "CSLuaEventManager",
-                                   "PlayerHP", "PlayerSP", "PlayerXYZA", "TeleportFunction"]
-        for addr_key in critical_game_addresses:
-            if self.mem._resolve_pointer_path(addr_key) is None:
-                logging.error(
-                    f"Critical game address '{addr_key}' could not be resolved.")
-                return False
-        logging.info(
-            "All essential game-specific addresses resolved successfully.")
-        return True
 
     def close(self):
         self.mem.detach()
@@ -157,17 +127,11 @@ class EldenRingGame:
 
     @property
     def player_flask_count(self) -> Optional[int]:
-        """
-        Returns total number of healing flasks (crimson not cerulean) (all upgrades) in players inventory
-        """
         try:
             inventory_items = self.get_inventory_items()
             if not inventory_items:
                 return 0
-
-            # Flask IDs: base to +12 (1000–1025)
             FLASK_IDS = set(range(1000, 1026))
-
             return sum(item["quantity"] for item in inventory_items if item["id"] in FLASK_IDS)
         except Exception as e:
             logging.error(f"Failed to get player flask count: {e}")
@@ -176,10 +140,7 @@ class EldenRingGame:
     @property
     def boss_animation_id(self) -> Optional[int]:
         """Returns the current animation ID of the boss."""
-        # This requires _boss_comp_addr to be resolved, which happens when boss_hp is read.
         if not self._boss_comp_addr:
-            # Try to resolve if not resolved, but don't force it here to avoid loops.
-            # It's expected to be resolved when boss_hp is accessed.
             return None
 
         # This offset is typically from the character's base/component address
@@ -479,50 +440,50 @@ class EldenRingGame:
             self._boss_last_resolve = now
             self._resolve_boss_stats_address()
 
-        if self._boss_stats_addr and self.mem._pm:
+        if self._boss_stats_addr:
             try:
                 cur = self.mem.read_int(self._boss_stats_addr)
                 mxx = self.mem.read_int(self._boss_stats_addr + 4)
                 if cur is None or mxx is None or mxx <= 0:
+                    self._boss_stats_addr = 0
                     return None
                 return max(0.0, min(1.0, float(cur) / float(mxx)))
-            except Exception:  # Catch any read errors and return None
+            except Exception:
+                self._boss_stats_addr = 0
                 return None
         return None
 
     def _resolve_boss_stats_address(self) -> None:
-        if not self.mem._pm or not self._boss_param_id:
+        """
+        REWRITTEN: This method now correctly uses the MemoryManager's public API
+        to find the true base address of WorldChrMan before scanning for the boss.
+        """
+        if not self.mem.attached or not self._boss_param_id:
             return
 
-        base_addr = self.mem._bases_static.get(
-            "WorldChrMan")  # Access internal bases_static
-        if not base_addr:
-            logging.warning(
-                "WorldChrMan base address not resolved for boss scan.")
-            return
-
-        # WorldChrMan is typically a pointer at base_address + offset
-        wcm_ptr = self.mem.read_longlong(
-            self.mem._module.lpBaseOfDll + base_addr)
+        # CORRECT WAY: Ask MemoryManager to resolve the TRUE base address of WorldChrMan.
+        # This single call replaces all the old, incorrect logic.
+        wcm_ptr = self.mem._resolve_pointer_path("WorldChrMan")
         if not wcm_ptr:
-            logging.warning("WorldChrMan pointer not readable.")
+            logging.warning(
+                "Could not resolve WorldChrMan's true base address for boss scan.")
             return
 
         try:
+            # The rest of the logic can now proceed from the correct base pointer.
             begin = self.mem.read_longlong(
-                wcm_ptr + self._wcm_offsets.get("character_list_begin_off", 0)
-            )
+                wcm_ptr + self._wcm_offsets.get("character_list_begin_off", 0))
             end = self.mem.read_longlong(
-                wcm_ptr + self._wcm_offsets.get("character_list_end_off", 0)
-            )
+                wcm_ptr + self._wcm_offsets.get("character_list_end_off", 0))
+
             if begin is None or end is None or end <= begin:
                 logging.warning(
                     "Character list begin/end not resolved or invalid.")
                 return
 
             logging.info(
-                f"Scanning for boss with Param ID {self._boss_param_id} in list from {hex(begin)} to {hex(end)}..."
-            )
+                f"Scanning for boss with Param ID {self._boss_param_id} in list from {hex(begin)} to {hex(end)}...")
+
             p = begin
             count = 0
             while p < end:
@@ -538,21 +499,17 @@ class EldenRingGame:
                     continue
 
                 logging.info(
-                    f" Found boss with matching PID at entity address {hex(ent)} after {count} scans :)"
-                )
+                    f"Found boss with matching PID at entity address {hex(ent)} after {count} scans.")
 
-                # Further offsets to reach stats and transform
                 comp_off = self._char_offsets.get("comp_190_off", 0)
-                comp = self.mem.read_longlong(
-                    ent + comp_off)
+                comp = self.mem.read_longlong(ent + comp_off)
                 if not comp:
                     logging.warning(
-                        f"Could not read component pointer from {hex(ent+comp_off)}")
+                        f"Could not read component pointer from {hex(ent + comp_off)}")
                     continue
 
                 stats_off = self._char_offsets.get("stats_qword_off", 0)
-                stats = self.mem.read_longlong(
-                    comp + stats_off)
+                stats = self.mem.read_longlong(comp + stats_off)
                 if stats:
                     self._boss_stats_addr = stats
                     logging.info(
@@ -562,13 +519,13 @@ class EldenRingGame:
                     transform_off = self._char_offsets.get(
                         "transform_68_off", 0)
                     self._boss_transform_addr = self.mem.read_longlong(
-                        comp + transform_off)  # e.g. component + 0x68
+                        comp + transform_off)
                     logging.info(
                         f"Resolved boss transform address to {hex(self._boss_transform_addr)}")
-                    return
+                    return  # Exit once found
+
             logging.warning(
-                f"Finished scanning {count} entities. Boss with Param ID {self._boss_param_id} not found."
-            )
+                f"Finished scanning {count} entities. Boss with Param ID {self._boss_param_id} not found.")
         except Exception as e:
             logging.error(f"Error while scanning for boss entity: {e}")
 
@@ -722,62 +679,59 @@ class EldenRingGame:
 
         return matches
 
+    def get_inventory_items(self, inv_index: int = 0) -> List[Dict]:
+        """
+        REWRITTEN: Returns a list of all items in the player's inventory.
+        This now correctly uses the public API of MemoryManager.
+        """
+        items: List[Dict] = []
 
-def get_inventory_items(self, inv_index: int = 0) -> List[Dict]:
-    """
-    Returns a list of all items in the player's inventory.
-    Each item is a dict: {"id": int, "quantity": int, "type_code": int, "entry_address": int}
-    inv_index: which sub-list (0 = player inventory, 1 = storage chest, etc.)
-    """
-    items: List[Dict] = []
+        ENTRY_SIZE = 0x18
+        LIST_PTR_OFFSET = 0x10
+        COUNT_OFFSET = 0x18
+        KEY_OFFSET_STRIDE = 0x10
+        FIELD_HANDLE = 0x00
+        FIELD_RAW_ITEMID = 0x04
+        FIELD_QUANTITY = 0x08
 
-    ENTRY_SIZE = 0x18
-    LIST_PTR_OFFSET = 0x10
-    COUNT_OFFSET = 0x18
-    KEY_OFFSET_STRIDE = 0x10
-    FIELD_HANDLE = 0x00
-    FIELD_RAW_ITEMID = 0x04
-    FIELD_QUANTITY = 0x08
-
-    # 1) Resolve EquipInventoryData from addresses.yaml
-    try:
-        _, equip_inventory_data = self.get_address_value(
+        _, equip_inventory_data = self.mem.get_address_value(
             "EquipInventoryData_Player")
         if not equip_inventory_data:
+            logging.warning(
+                "Could not resolve EquipInventoryData_Player pointer.")
             return items
-    except Exception:
+
+        keyOffset = inv_index * KEY_OFFSET_STRIDE
+        inventory_list_ptr = self.mem.read_longlong(
+            equip_inventory_data + LIST_PTR_OFFSET + keyOffset)
+        inventory_count_reported = self.mem.read_int(
+            equip_inventory_data + COUNT_OFFSET + keyOffset)
+
+        if not inventory_list_ptr or not inventory_count_reported or inventory_count_reported <= 0:
+            return items
+
+        # Iterate with a safe cap
+        cap = min(inventory_count_reported, 4096)
+        for i in range(cap):
+            entry_addr = inventory_list_ptr + i * ENTRY_SIZE
+            try:
+                ga_handle = self.mem.read_int(entry_addr + FIELD_HANDLE)
+                if ga_handle == 0:
+                    continue
+
+                raw_id = self.mem.read_int(entry_addr + FIELD_RAW_ITEMID)
+                quantity = self.mem.read_int(entry_addr + FIELD_QUANTITY)
+
+                type_code = (raw_id & 0xF0000000) >> 28
+                base_id = raw_id & 0x0FFFFFFF
+
+                items.append({
+                    "id": base_id,
+                    "raw_id": raw_id,
+                    "quantity": quantity or 0,
+                    "type_code": type_code,
+                    "entry_address": entry_addr
+                })
+            except Exception:
+                continue
         return items
-
-    # 2) Compute sub-list key offset
-    keyOffset = inv_index * KEY_OFFSET_STRIDE
-
-    # 3) Read inventory list pointer and reported item count
-    inventory_list_ptr = self.mem.read_longlong(
-        equip_inventory_data + LIST_PTR_OFFSET + keyOffset)
-    inventory_count_reported = self.mem.read_int(
-        equip_inventory_data + COUNT_OFFSET + keyOffset)
-    if not inventory_list_ptr or not inventory_count_reported or inventory_count_reported <= 0:
-        return items
-
-    # 4) Iterate over inventory entries
-    for i in range(inventory_count_reported):
-        entry_addr = inventory_list_ptr + i * ENTRY_SIZE
-        try:
-            ga_handle = self.mem.read_int(entry_addr + FIELD_HANDLE)
-            if ga_handle == 0:
-                continue  # empty slot
-            raw_id = self.mem.read_int(entry_addr + FIELD_RAW_ITEMID)
-            quantity = self.mem.read_int(entry_addr + FIELD_QUANTITY)
-            type_code = (raw_id & 0xF0000000) >> 28  # high nibble: type
-            base_id = raw_id & 0x0FFFFFFF
-            items.append({
-                "id": base_id,
-                "raw_id": raw_id,
-                "quantity": quantity or 0,
-                "type_code": type_code,
-                "entry_address": entry_addr
-            })
-        except Exception:
-            continue
-
-    return items

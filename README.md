@@ -70,11 +70,28 @@ flowchart LR
   D -. version gate .-> V
   D -. safety .-> AC
 ```
+## Memory Address Architecture
+
+To ensure stability across game restarts, this project does **not** use hardcoded memory addresses. Instead, it uses a multi-level pointer system common in game hacking, originating from tools like Cheat Engine. The process is defined in `config/addresses.yaml` and works as follows:
+
+1.  **Find the Game's Base Address:** The program first finds the memory address where `eldenring.exe` is loaded. This address changes every time the game starts (due to ASLR).
+
+2.  **Locate the Static Pointer:** The `bases_static` section of the config contains a list of **Relative Virtual Addresses (RVAs)**. An RVA is a fixed offset from the game's base address.
+    *   The program calculates: `Static Pointer Address = Game Base Address + RVA`
+    *   This address points to a **global pointer**, which acts as a stable "signpost" to a dynamic game structure.
+
+3.  **Dereference to Find the True Base Address:** The program then reads the 8-byte value *at* the `Static Pointer Address`. This value is the **true, dynamic base address** of a core game structure (e.g., `WorldChrMan`). This address is dynamic and can change.
+
+4.  **Follow the Offset Chain:** The `addresses` section of the config defines chains of offsets for specific values (like `PlayerHP`). Starting from the **true base address** found in Step 3, the program follows this chain:
+    *   It reads the pointer at `(address + offset1)`.
+    *   Then it reads the pointer at `(new_address + offset2)`.
+    *   ...and so on, until the final offset is added to find the memory location of the desired value (e.g., the integer for the player's current health).
+
+This multi-step process allows the program to reliably find game data even though the memory layout changes on each launch.
+
 
 ## Observation and rewards
-
 - Observation (default):
-
   - `img`: `(MODEL_HEIGHT, MODEL_WIDTH, 3)` uint8
   - `prev_actions`: `(10, NUMBER_DISCRETE_ACTIONS, 1)` uint8
   - `state`: `(7,)` float32 = `[player_hp, player_stamina, boss_hp, time_alive_s, arena_phase, dist_to_boss, time_since_boss_dmg]`
@@ -85,26 +102,16 @@ flowchart LR
 
 - Elden Ring process must be running and accessible.
 - Game must be in single-player offline mode.
-- Memory addresses and AOB patterns in `config/addresses.yaml` must match your game version.
-- Using a new game save is recommended for stability/safety.
+- Memory addresses and AOB patterns in `config/addresses.yaml` must match your game version (v16 when made)
+- Using a new game save is recommended for safety
 
-## Notes on safety and scope
-
-- This project is for educational research purposes only, designed for single-player offline use.
-- Memory addresses are highly version-specific; ensure your game version remains fixed while you reverse and configure addresses.
-- Start with one arena and iterate to ensure stability.
-
-## Extending state and future work
-
-- The `EldenRingGame` class provides a clean interface for adding more game-specific state and actions.
-- You can extend `config/addresses.yaml` to include more memory features (e.g., FP/MP, specific debuffs, inventory items, detailed player/boss animation IDs).
-- Further enhancements could include more sophisticated anti-cheat mitigation, automated signature scanning for version compatibility, and a more robust offset database.
 
 ## Contributing
-
 - You can contribute by extending the YAML configuration files with new addresses or arena data.
 - Develop new `MemoryManager` methods for raw memory operations or `EldenRingGame` properties/methods for high-level game interactions.
 
 ## Credits
 
-This project builds on the original EldenRL and SoulsGym work. All training should now use the unified `EldenHybridEnv`.
+This project builds on the original EldenRL work
+
+

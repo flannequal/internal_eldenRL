@@ -3,7 +3,7 @@ import os
 import logging
 import sys
 
-# --- Robust Logging Setup ---
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -14,7 +14,7 @@ handler = logging.StreamHandler(sys.stdout)
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-# --- End Logging Setup ---
+
 
 def train(CREATE_NEW_MODEL, config):
     logging.info("Initializing training environment...")
@@ -36,15 +36,16 @@ def train(CREATE_NEW_MODEL, config):
         env = EldenHybridEnv(config)
         logging.info("EldenHybridEnv initialized.")
     except ImportError:
-        logging.error("Failed to import EldenHybridEnv. Make sure the file exists and is in the correct path.")
-        sys.exit(1) # Exit if env cannot be imported
+        logging.error(
+            "Failed to import EldenHybridEnv. Make sure the file exists and is in the correct path.")
+        sys.exit(1)  # Exit if env cannot be imported
     except RuntimeError as e:
         logging.error(f"Failed to initialize EldenHybridEnv: {e}")
-        sys.exit(1) # Exit if env initialization fails due to memory issues
+        sys.exit(1)  # Exit if env initialization fails due to memory issues
     except Exception as e:
-        logging.error(f"An unexpected error occurred during EldenHybridEnv initialization: {e}")
+        logging.error(
+            f"An unexpected error occurred during EldenHybridEnv initialization: {e}")
         sys.exit(1)
-
 
     if CREATE_NEW_MODEL or not os.path.exists(model_path):
         model = PPO('MultiInputPolicy',
@@ -65,7 +66,8 @@ def train(CREATE_NEW_MODEL, config):
     try:
         logging.info("Starting training loop...")
         while True:
-            model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="PPO")
+            model.learn(total_timesteps=TIMESTEPS,
+                        reset_num_timesteps=False, tb_log_name="PPO")
             model.save(model_path)
             logging.info("Model updated and saved.")
     except KeyboardInterrupt:
@@ -74,7 +76,7 @@ def train(CREATE_NEW_MODEL, config):
         logging.info("Model saved. Exiting.")
     except Exception as e:
         logging.error(f"An error occurred during training: {e}")
-        model.save(model_path) # Attempt to save model on error
+        model.save(model_path)  # Attempt to save model on error
         logging.info("Model saved due to error. Exiting.")
     finally:
         env.close()
