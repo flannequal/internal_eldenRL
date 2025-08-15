@@ -1,16 +1,20 @@
 bases_static:
-  GameDataMan: 0x3D5DF38
   WorldChrMan: 0x3D65F88
-  LocalPlayerOffset: 0x3D76E80
+  LocalPlayerOffset: 0x10EF8
   MapItemMan: 0x3D67A50
   GameMan: 0x3D69918
+  GameDataMan: 0x3D5DF38
   FieldArea: 0x3D691D8
+  LockTgtMan: 0x3D6A208
   DamageCtrl: 0x3D66378
   TeleportFunction: 0x1337040
-
-bases_aob:
-  CSLuaEventManager: "48 83 3D ?? ?? ?? ?? 00 48 8B F9 0F 84 ?? ?? ?? ?? 48" # AOB for CSLuaEventManager
-  WarpFunction: "C3 ?? ?? ???????? 57 48 83 EC ?? 48 8B FA 44" # AOB for LuaWarp_01 (will be resolved and +2 applied)
+  CSLuaEventManager: 0x3D67E48
+  CSLuaEventMan: 0x3D67E48
+  WarpFunction: 0x599CD0
+  Warp: 0x20000
+# 3E213247
+# 7FF3CD6CBFA0
+# 7FF3CE562600
 
 addresses:
   PlayerGameData:
@@ -22,6 +26,11 @@ addresses:
     base: PlayerGameData
     offsets: [0x538]
     type: ptr
+
+  # LocalPlayerOffset:
+  #   base: WorldChrMan
+  #   offsets: [0x10EF8]
+  #   type: ptr
 
   Inventory:
     entry_size: 0x18
@@ -81,7 +90,7 @@ addresses:
     offsets: [0xB30]
     type: int
   Time:
-    base: GameDataMan
+    base: GameMan
     offsets: [0xA0]
     type: int
   LocalCam:
@@ -95,7 +104,7 @@ addresses:
     type: bytes
     length: 12
   PlayerStats:
-    base: GameDataMan
+    base: GameMan
     offsets: [0x08, 0x3C]
     type: int
   LockOn:

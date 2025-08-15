@@ -1,9 +1,11 @@
+import ctypes
 import os
 import time
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 import yaml
 import pymem
+import pymem.ressources.kernel32 as k32
 
 
 class MemoryManager:
@@ -44,10 +46,8 @@ class MemoryManager:
             f"Loading memory configurations from {self.addresses_config_path}...")
         addresses_yaml = self._safe_load_yaml(self.addresses_config_path)
 
-        # This dictionary will TEMPORARILY hold the Relative Virtual Addresses (RVAs)
         self._bases_static = addresses_yaml.get("bases_static", {})
 
-        # Load other configs
         self._aob_patterns = addresses_yaml.get("bases_aob", {})
         self._addresses = addresses_yaml.get("addresses", {})
 
@@ -87,7 +87,6 @@ class MemoryManager:
 
             # otherwise iterate two chars at a time to handle tokens like "48??3D" or maybe malformed spacing
             i = 0
-            # if odd length, try to salvage by prepending a '?' to first nibble (rare)
             if len(part) % 2 == 1:
                 part = "?" + part
             while i < len(part):
@@ -191,50 +190,32 @@ class MemoryManager:
         return None
 
     def attach(self) -> bool:
-        """Attaches to the process and calculates absolute pointer addresses."""
-        if self.attached and self._pm:
-            return True
-        if time.time() - self._last_attach_attempt < 2.0:
-            return False
+        """Attaches to the process and prepares all base addresses."""
+        if self.attached and self._pm: return True
+        if time.time() - self._last_attach_attempt < 2.0: return False
         self._last_attach_attempt = time.time()
-
         try:
             self._pm = pymem.Pymem(self.process_name)
-            self._module = pymem.process.module_from_name(
-                self._pm.process_handle, self.process_name
-            )
+            self._module = pymem.process.module_from_name(self._pm.process_handle, self.process_name)
             if not self._module:
-                logging.error(f"could not find module '{self.process_name}'.")
-                self.detach()
+                logging.error(f"Could not find module '{self.process_name}'.")
                 return False
 
             self.attached = True
-            logging.info(
-                f"successfully attached to process '{self.process_name}' (PID: {self._pm.process_id}).")
-
             module_base = self._module.lpBaseOfDll
-
-            absolute_base_pointers = {}
+            
+            # This holds absolute addresses of STATIC POINTERS (from RVAs)
+            self._static_pointer_addrs = {}
             for name, rva in self._bases_static.items():
-                absolute_base_pointers[name] = module_base + rva
-
-            self._bases_static = absolute_base_pointers
-
-            logging.debug(
-                f"Correctly calculated 'WorldChrMan' pointer address to: {hex(self._bases_static.get('WorldChrMan', 0))}")
-
-            # Initialize and perform AOB scans
-            self._aob_scans = {}
+                self._static_pointer_addrs[name] = module_base + rva
+            
+            # This holds DIRECT addresses (from AOB scans)
+            self._direct_addrs = {}
             for name, aob_pattern in self._aob_patterns.items():
-                resolved_addr = self._scan_aob(aob_pattern)
-                if resolved_addr:
-                    self._bases_static[name] = resolved_addr
-                    self._aob_scans[name] = resolved_addr
-
+                self._direct_addrs[name] = self._scan_aob(aob_pattern)
+            
+            logging.info("All base addresses prepared.")
             return True
-        except pymem.exception.ProcessNotFound:
-            logging.warning(f"Process '{self.process_name}' not found.")
-            return False
         except Exception as e:
             logging.error(f"Failed to attach to process: {e}")
             return False
@@ -340,19 +321,64 @@ class MemoryManager:
             logging.error(f"Failed to free memory at {hex(address)}: {e}")
             return False
 
-    def create_remote_process(self, address: int) -> bool:
-        """Executes shellcode at the given address in a remote thread."""
+        
+    def execute_shellcode(self, shellcode: bytes) -> bool:
+        """
+        The definitive method to execute shellcode.
+        This manually allocates memory, writes the shellcode, creates a remote
+        thread using the direct WinAPI call, waits for it, and cleans up.
+        This bypasses the buggy high-level pymem functions.
+        """
         if not self.attached or not self._pm:
-            return False
-        try:
-            self._pm.create_remote_thread(address)
-            return True
-        except Exception as e:
-            logging.error(
-                f"Failed to create remote thread at {hex(address)}: {e}")
+            logging.error("Cannot execute shellcode, not attached.")
             return False
 
-    # --- helpers --------------------------------------------------------------
+        shellcode_addr = None
+        try:
+            # 1. Allocate memory for the shellcode inside the game
+            shellcode_addr = self.allocate(len(shellcode))
+            if not shellcode_addr:
+                logging.error("Failed to allocate memory for shellcode.")
+                return False
+
+            # 2. Write the shellcode to the allocated memory
+            if not self.write_bytes(shellcode_addr, shellcode):
+                logging.error("Failed to write shellcode to allocated memory.")
+                return False
+
+            # 3. Execute the shellcode in a new thread
+            logging.info(f"Executing shellcode at remote address {hex(shellcode_addr)}")
+            thread_handle = k32.CreateRemoteThread(
+                self._pm.process_handle,
+                None,
+                0,
+                shellcode_addr, # The address of our shellcode
+                None,
+                0,
+                None
+            )
+            
+            if not thread_handle:
+                error_code = ctypes.windll.kernel32.GetLastError()
+                logging.error(f"CreateRemoteThread failed, GetLastError={error_code:#x}")
+                return False
+
+            # 4. Wait for the thread to finish executing
+            k32.WaitForSingleObject(thread_handle, -1) # -1 means wait indefinitely
+            k32.CloseHandle(thread_handle) # Clean up the thread handle
+            
+            logging.info("Remote thread executed successfully.")
+            return True
+
+        except Exception as e:
+            logging.error(f"An exception occurred during shellcode execution: {e}")
+            return False
+            
+        finally:
+            # 5. ALWAYS free the memory we allocated
+            if shellcode_addr:
+                self.free(shellcode_addr)
+
 
     def _read_ptr_value(self, addr: int) -> Optional[int]:
         """Read an unsigned pointer-sized value (8 bytes) from addr. Return None on failure."""
@@ -444,7 +470,6 @@ class MemoryManager:
 
         addr = base_addr
 
-        # Dereference all offsets except the last one
         for i, offset in enumerate(offsets[:-1]):
             try:
                 addr = self._pm.read_longlong(addr + offset)
@@ -459,71 +484,67 @@ class MemoryManager:
 
         # Add the final offset to get the address of the actual value
         return addr + offsets[-1]
-
-    def _resolve_pointer_path(self, path_key: str) -> Optional[int]:
-        """Resolves an address key to its final, absolute memory address."""
-        if not self.attached or not self._pm:
-            return None
-
-        path_info = self._addresses.get(path_key)
-        if not isinstance(path_info, dict):
-            logging.warning(
-                f"Address key '{path_key}' not found or not a valid structure in config.")
-            return None
-
-        # step1 resolve the base name e.g WorldChrMan
-        base_name = path_info.get("base")
-        if not base_name:
-            logging.warning(f"No 'base' specified for '{path_key}'")
-            return None
-
-        # Look up the absolute address of the static pointer (calculated in attach)
-        static_pointer_addr = self._bases_static.get(base_name)
-        if static_pointer_addr is None:
-            logging.warning(
-                f"Could not find the static pointer address for base '{base_name}'")
-            return None
-
+    
+    
+    def read_pointer(self, address: int) -> Optional[int]:
+        """
+        NEW METHOD: Reads an 8-byte value and interprets it as a 64-bit
+        unsigned integer, which is correct for memory addresses (pointers).
+        """
         try:
-            # step 2 dereference the pointer to get the true base address
-            true_base_addr = self._pm.read_longlong(static_pointer_addr)
-            if true_base_addr == 0:
-                logging.warning(f"Base pointer for '{base_name}' is NULL.")
-                return None
-        except Exception as e:
-            logging.error(
-                f"Failed to read/dereference base pointer for '{base_name}' at {hex(static_pointer_addr)}: {e}")
+            data = self._pm.read_bytes(address, 8)
+            # Use signed=False to correctly handle high-memory addresses
+            return int.from_bytes(data, "little", signed=False)
+        except Exception:
             return None
+        
+        
+    def resolve_address(self, path_key: str) -> Optional[int]:
+        """The definitive, simple, and universal address resolver."""
+        if not self.attached: return None
 
-        # step 3 follow the offset chain
-        offsets_spec = path_info.get("offsets", [])
-        if not offsets_spec:
-            return true_base_addr  # No offsets, return the dereferenced base
+        if path_key in self._static_pointer_addrs:
+            if path_key == "TeleportFunction":
+                return self._static_pointer_addrs[path_key]
+            
+            return self.read_pointer(self._static_pointer_addrs[path_key])
+        
+        if path_key in self._direct_addrs:
+            return self._direct_addrs[path_key]
 
-        offsets = [int(o, 0) if isinstance(o, str) else int(o)
-                   for o in offsets_spec]
+        if path_key in self._addresses:
+            path_info = self._addresses[path_key]
+            base_name = path_info.get("base")
+            if not base_name: return None
+            
+            start_address = self.resolve_address(base_name)
+            if start_address is None: return None
+            
+            offsets = [int(o, 0) if isinstance(o, str) else int(o) for o in path_info.get("offsets", [])]
+            if not offsets: return start_address
+            
+            return self._follow_pointer_chain(start_address, offsets)
 
-        return self._follow_pointer_chain(true_base_addr, offsets)
+        logging.warning(f"Could not resolve address for key: {path_key}")
+        return None
 
-    def get_address_value(self, path_key: str):
+    def read_value(self, path_key: str) -> Tuple[Optional[int], Any]:
         """
-        Resolve an address key from addresses.yaml and read the memory value
-        using the 'type' field if present in the addresses config.
-        Returns (resolved_addr, value) or (None, None) on failure.
+        NEW PUBLIC METHOD: Resolves a key and reads the value at the final address.
         """
-        addr = self._resolve_pointer_path(path_key)
-        if addr is None:
-            logging.debug(
-                f"get_address_value: could not resolve address for '{path_key}'")
+        address = self.resolve_address(path_key)
+        if address is None:
             return None, None
 
-        # determine type from addresses table when available
-        # Use _addresses, not self.getattr
         path_info = self._addresses.get(path_key, {})
-        desired_type = None
-        if isinstance(path_info, dict):
-            desired_type = path_info.get("type")
-        val = self._read_typed_value(addr, desired_type)
+        value_type = path_info.get("type")
+
+        if value_type == "bytes":
+            length = path_info.get("length", 16)
+            value = self.read_bytes(address, length)
+        else:
+            value = self._read_typed_value(address, value_type)
+
         logging.debug(
-            f"get_address_value: '{path_key}' -> {hex(addr)}, value={val} (type={desired_type})")
-        return addr, val
+            f"read_value: '{path_key}' -> {hex(address)}, value={value} (type={value_type})")
+        return address, value
