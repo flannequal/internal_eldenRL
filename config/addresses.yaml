@@ -12,9 +12,7 @@ bases_static:
   CSLuaEventMan: 0x3D67E48
   WarpFunction: 0x599CD0
   Warp: 0x20000
-# 3E213247
-# 7FF3CD6CBFA0
-# 7FF3CE562600
+
 
 addresses:
   PlayerGameData:
@@ -130,7 +128,3 @@ character:
   stats_qword_off: 0x138
   transform_68_off: 0x68
   pos_xyz_off: 0x70
-  animation_id_off: 0x20 # Placeholder: offset from character base/component to animation ID (often near player_animation)
-  # Possible other character offsets:
-  # is_invincible_off: 0xABC # Placeholder for invincibility frames
-  # current_poise_off: 0xDEF # Placeholder for current poise value
