@@ -52,15 +52,7 @@ class MemoryManager:
         self._addresses = addresses_yaml.get("addresses", {})
 
     def _parse_aob_pattern(self, aob_pattern_str: str):
-        """
-        Parse a human AOB string into (pattern_bytes, mask_bytes).
-        Mask contains 1 for concrete bytes, 0 for wildcards.
-        Accepts patterns like:
-        "48 83 3D ?? ?? ?? ?? 00 48"
-        "C3 ?? ?? ???????? 57"
-        "48??3D ?? 00"
-        with or without leading "AOB:".
-        """
+
         s = str(aob_pattern_str).strip()
         if not s:
             return b"", bytearray()
@@ -230,6 +222,33 @@ class MemoryManager:
         self._pm = None
         self._module = None
 
+
+    def write_bit(self, address: int, index: int, value: bool) -> bool:
+        """Safely writes a single bit to memory."""
+        if not self.attached or not self._pm:
+            return False
+        try:
+            byte_value = self.read_bytes(address, 1)
+            if byte_value is None:
+                logging.error(f"write_bit: Failed to read byte at {hex(address)}")
+                return False
+
+            current_byte = byte_value[0]
+            mask = 1 << index
+
+            if value:
+                # Set the bit to 1
+                new_byte = current_byte | mask
+            else:
+                # Set the bit to 0
+                new_byte = current_byte & ~mask
+
+            return self.write_bytes(address, new_byte.to_bytes(1, 'little'))
+        except Exception as e:
+            logging.error(f"Failed to write bit at {hex(address)}: {e}")
+            return False
+        
+        
     def read_bytes(self, address: int, length: int) -> Optional[bytes]:
         """Safely reads raw bytes from memory, returning None on error."""
         if not self.attached or not self._pm:
