@@ -161,44 +161,96 @@ class EldenRingGame:
             return False
         return self.mem.write_int(addr, grace_id)
 
-    def _execute_teleport(
-        self, x: float, y: float, z: float, cos: float, sin: float, map_id: int
-    ):
-        teleport_func_addr = self.mem.resolve_address("TeleportFunction")
-        if not teleport_func_addr:
-            logging.error("TeleportFunction address not resolved.")
-            return False
+    @property
+    def allow_player_death(self) -> Optional[bool]:
+        """Reads the flag that allows/prevents player death."""
+        addr, val = self.mem.read_value("AllowPlayerDeath")
+        if val is None:
+            return None
+        # In the game's memory, 0 means death is allowed. 1 means it is prevented.
+        return val == 0
 
-        # Allocate a small buffer for the coordinates ONLY.
-        coord_buffer = self.mem.allocate(28) # Increased size slightly for safety
-        if coord_buffer is None:
-            logging.error("Failed to allocate coordinate buffer for teleport.")
-            return False
+    @allow_player_death.setter
+    def allow_player_death(self, enabled: bool):
+        """Sets the flag that allows/prevents player death."""
+        addr = self.mem.resolve_address("AllowPlayerDeath")
+        if not addr:
+            logging.error("Could not resolve AllowPlayerDeath address to write.")
+            return
+        # If enabled (death is allowed), write 0. If disabled, write 1.
+        value_to_write = 0 if enabled else 1
+        self.mem.write_int(addr, value_to_write)
 
+    @property
+    def player_gravity(self) -> Optional[bool]:
+        """Reads the player's gravity flag (bit 6)."""
+        addr, val = self.mem.read_value("PlayerGravity")
+        if val is None:
+            return None
+        # Gravity is controlled by the 6th bit of this integer.
+        return (val & (1 << 6)) != 0
+
+    @player_gravity.setter
+    def player_gravity(self, enabled: bool):
+        """Sets the player's gravity flag (bit 6)."""
+        addr = self.mem.resolve_address("PlayerGravity")
+        if not addr:
+            logging.error("Could not resolve PlayerGravity address to write.")
+            return
+        self.mem.write_bit(addr, 6, enabled)
+
+    @player_position.setter
+    def player_position(self, pos: Tuple[float, float, float]):
+        """Writes the player's XYZ coordinates directly to memory."""
+        addr = self.mem.resolve_address("PlayerXYZA")
+        if not addr:
+            logging.error("Could not resolve PlayerXYZA address to write position.")
+            return
         try:
-            # Write the coordinates to our buffer
-            self.mem.write_bytes(
-                coord_buffer, struct.pack("<fffffI", x, y, z, cos, sin, map_id)
-            )
+            x, y, z = pos
+            # Write coordinates as three separate float values
+            self.mem.write_bytes(addr, struct.pack("<fff", x, y, z))
+            logging.info(f"Set player position to ({x:.2f}, {y:.2f}, {z:.2f})")
+        except Exception as e:
+            logging.error(f"Error writing player position: {e}")
 
-            # Build shellcode that points to our coordinate buffer
-            shellcode = (
-                bytes([0x48, 0xB9])                             # MOV RCX, ...
-                + struct.pack("<Q", coord_buffer)              # ... address of coord_buffer
-                + bytes([0x48, 0xB8])                           # MOV RAX, ...
-                + struct.pack("<Q", teleport_func_addr)        # ... address of the teleport function
-                + bytes([0xFF, 0xD0])                           # CALL RAX
-                + bytes([0xC3])                                 # RET
-            )
-            
-            logging.info(f"Injecting and executing teleport shellcode...")
-            # ONE SINGLE CALL to execute everything.
-            return self.mem.execute_shellcode(shellcode)
+    def teleport_player(self, x: float, y: float, z: float):
+        """
+        Safely teleports the player to the given coordinates by disabling death and gravity,
+        writing the new coordinates, and then re-enabling them.
+        """
+        logging.info(f"Initiating safe teleport to ({x:.2f}, {y:.2f}, {z:.2f})...")
 
-        finally:
-            # Always free the coordinate buffer after we are done.
-            if coord_buffer:
-                self.mem.free(coord_buffer)
+        # 1. Store original states and disable flags
+        original_death_allowed = self.allow_player_death
+        original_gravity_enabled = self.player_gravity
+        
+        logging.debug("Disabling player death and gravity for teleport.")
+        self.allow_player_death = False
+        self.player_gravity = False
+
+        # Give the game a moment to process the flag changes
+        time.sleep(0.05)
+
+        # 2. Set the new position
+        self.player_position = (x, y, z)
+
+        # Wait for the position to 'settle' in the game world
+        time.sleep(0.1)
+
+        # 3. Restore original states
+        logging.debug("Re-enabling player death and gravity.")
+        if original_gravity_enabled is not None:
+            self.player_gravity = original_gravity_enabled
+        else:
+            self.player_gravity = True  # Default to gravity ON if it couldn't be read
+
+        if original_death_allowed is not None:
+            self.allow_player_death = original_death_allowed
+        else:
+            self.allow_player_death = True # Default to death ALLOWED if it couldn't be read
+
+        logging.info("Safe teleport complete.")
 
     def warp(self, bonfire_name_or_id: Any) -> bool:
         if not self.mem.attached:
@@ -298,14 +350,14 @@ class EldenRingGame:
 
         spawn = meta_entry.get("player_spawn", {})
         x, y, z = spawn.get("x", 0.0), spawn.get("y", 0.0), spawn.get("z", 0.0)
-        cos, sin = spawn.get("cos", 1.0), spawn.get("sin", 0.0)
+        #cos, sin = spawn.get("cos", 1.0), spawn.get("sin", 0.0)
         map_id = meta_entry.get("map_id")
 
         if not map_id:
             logging.error( f"No 'map_id' for arena {arena_id}. Cannot teleport.")
             return
 
-        self._execute_teleport(x, y, z, cos, sin, map_id)
+        self.teleport_player(x, y, z)
 
         self._boss_param_id = meta_entry.get("boss", {}).get("char_param_id")
         if isinstance(self._boss_param_id, str) and ":" in self._boss_param_id:
