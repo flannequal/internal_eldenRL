@@ -1,8 +1,40 @@
 import pymem
 import pymem.process
-import pymem.thread # Import the thread module
 import time
 import struct
+import ctypes
+
+# Load kernel32.dll for Windows API calls
+kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+
+# Define necessary Windows API structures and constants
+LPVOID = ctypes.c_void_p
+HANDLE = ctypes.c_void_p
+DWORD = ctypes.c_ulong
+LPTHREAD_START_ROUTINE = ctypes.CFUNCTYPE(DWORD, LPVOID)
+
+# Define CreateRemoteThread function signature
+# https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createremotethread
+create_remote_thread = kernel32.CreateRemoteThread
+create_remote_thread.argtypes = [
+    HANDLE, LPVOID, LPVOID, LPVOID, DWORD, ctypes.POINTER(DWORD), LPVOID, ctypes.POINTER(DWORD)
+]
+create_remote_thread.restype = HANDLE
+
+# Define WaitForSingleObject function signature
+# https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitforsingleobject
+wait_for_single_object = kernel32.WaitForSingleObject
+wait_for_single_object.argtypes = [HANDLE, DWORD]
+wait_for_single_object.restype = DWORD
+
+# Define CloseHandle function signature
+# https://docs.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-closehandle
+close_handle = kernel32.CloseHandle
+close_handle.argtypes = [HANDLE]
+close_handle.restype = ctypes.c_int
+
+# Constants for WaitForSingleObject
+INFINITE = 0xFFFFFFFF
 
 class MemoryManager:
     """Verified working Memory Manager."""
@@ -19,16 +51,34 @@ class MemoryManager:
     def allocate_memory(self, size): return pymem.memory.allocate_memory(self.process_handle, size)
     def free_memory(self, address): pymem.memory.free_memory(self.process_handle, address)
     def write_bytes(self, address, data): self.pm.write_bytes(address, data, len(data))
+
     def create_remote_thread(self, address):
-        # Correctly call create_remote_thread from pymem.thread
-        thread_handle = pymem.thread.create_remote_thread(self.process_handle, address, 0)
+        # Use ctypes to call CreateRemoteThread
+        thread_start_routine = LPTHREAD_START_ROUTINE(address)
+        thread_handle = create_remote_thread(
+            self.process_handle,
+            None,  # Default security attributes
+            0,     # Default stack size
+            thread_start_routine,
+            None,  # No thread parameters
+            0,     # Default creation flags
+            None   # No thread identifier
+        )
+
         if thread_handle:
-            # Correctly call wait_for_single_object from pymem.thread
-            pymem.thread.wait_for_single_object(thread_handle, -1) # -1 means wait indefinitely
-            # Correctly call close_handle from pymem.thread
-            pymem.thread.close_handle(thread_handle)
-            return True
-        return False
+            # Use ctypes to call WaitForSingleObject
+            wait_result = wait_for_single_object(thread_handle, INFINITE)
+            if wait_result == 0: # WAIT_OBJECT_0 means the object was signaled
+                # Use ctypes to call CloseHandle
+                close_handle(thread_handle)
+                return True
+            else:
+                print(f"Error waiting for thread: {ctypes.get_last_error()}")
+                close_handle(thread_handle)
+                return False
+        else:
+            print(f"Error creating remote thread: {ctypes.get_last_error()}")
+            return False
 
 class FunctionCallerTeleporter:
     """
