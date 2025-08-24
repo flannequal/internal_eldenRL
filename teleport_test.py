@@ -58,12 +58,12 @@ class MemoryManager:
         thread_id = DWORD(0) # Variable to store the thread ID
         thread_handle = create_remote_thread(
             self.process_handle,
-            None,  # Default security attributes
-            0,     # Default stack size
+            None,  # Default security attributes (LPVOID)
+            0,     # Default stack size (SIZE_T, which is LPVOID in ctypes context for this)
             thread_start_routine,
-            None,  # No thread parameters
-            0,     # Default creation flags
-            ctypes.byref(thread_id) # Pass the thread_id variable by reference
+            None,  # No thread parameters (LPVOID)
+            0,     # Default creation flags (DWORD)
+            ctypes.byref(thread_id) # Pass the thread_id variable by reference (LPDWORD)
         )
 
         if thread_handle:
