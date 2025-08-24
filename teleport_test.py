@@ -1,140 +1,119 @@
 import pymem
-import struct
+import pymem.process
 import time
-import logging
+import struct
 
-# --- Configuration ---
-# Set up basic logging to see the script's progress.
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+class MemoryManager:
+    """Verified working Memory Manager."""
+    def __init__(self, process_name="eldenring.exe"): self.pm,self.base_address=None,None; self.connect(process_name)
+    def connect(self, process_name):
+        try: self.pm=pymem.Pymem(process_name); self.base_address=pymem.process.module_from_name(self.pm.process_handle,process_name).lpBaseOfDll; print(f"Connected to {process_name} @ 0x{self.base_address:X}")
+        except pymem.exception.PymemError as e: print(f"Error connecting: {e}")
+    def is_connected(self): return self.pm is not None
+    def allocate_memory(self, size): return pymem.memory.allocate_memory(self.pm.process_handle, size)
+    def free_memory(self, address): pymem.memory.free_memory(self.pm.process_handle, address)
+    def write_bytes(self, address, data): self.pm.write_bytes(address, data, len(data))
+    def create_remote_thread(self, address):
+        thread = pymem.process.create_remote_thread(self.pm.process_handle, address, 0)
+        if thread:
+            pymem.process.wait_for_single_object(thread[0], -1) # -1 means wait indefinitely
+            pymem.process.close_handle(thread[0])
+            return True
+        return False
 
-# The name of the game's process.
-PROCESS_NAME = "eldenring.exe"
+class FunctionCallerTeleporter:
+    """
+    Achieves perfect teleportation by injecting assembly code to call the
+    game's internal WarpFunction, replicating how advanced cheat tables work.
+    """
+    def __init__(self, mem_manager):
+        self.mm = mem_manager
+        if not self.mm.is_connected(): raise ConnectionError("MemoryManager not connected.")
+        
+        # Addresses of the internal game functions and objects
+        self.GAME_MAN_STATIC = 0x3D69918
+        self.WARP_FUNCTION = self.mm.base_address + 0x599CD0
 
-# RVA (Relative Virtual Address) for WorldChrMan. This is a static offset
-# from the game's main module base address.
-WORLDCHRMAN_RVA = 0x3D65F88
+    def invoke_teleport(self, map_id, x, y, z):
+        print("\n--- Invoking Teleport via Internal Warp Function ---")
 
-# Pointer chains (offsets) from the resolved WorldChrMan address.
-# These chains navigate through memory to find the desired values.
-PLAYER_BASE_OFFSETS = [0x10EF8, 0x0]
-PLAYER_XYZ_OFFSETS = PLAYER_BASE_OFFSETS + [0x190, 0x68, 0x70]
-PLAYER_GRAVITY_OFFSETS = PLAYER_BASE_OFFSETS + [0x190, 0x68, 0x1D3]
-ALLOW_PLAYER_DEATH_OFFSETS = PLAYER_BASE_OFFSETS + [0x190, 0x0, 0x19B]
+        # 1. Allocate memory inside the game for our data and code
+        # We need space for a 5-integer structure (map_id, x, y, z, unknown)
+        coord_data_addr = self.mm.allocate_memory(20) 
+        # We need space for our assembly shellcode
+        shellcode_addr = self.mm.allocate_memory(256)
 
-# Target coordinates for the teleport (Beastman Arena from your config).
-# You can change these values to teleport to a different location.
-TARGET_X = -3.797457933
-TARGET_Y = -7.21598196 # In-game height coordinate
-TARGET_Z = 2.266977549
+        if not coord_data_addr or not shellcode_addr:
+            print("Error: Could not allocate memory in the game process.")
+            if coord_data_addr: self.mm.free_memory(coord_data_addr)
+            if shellcode_addr: self.mm.free_memory(shellcode_addr)
+            return False
 
-
-class TeleportationError(Exception):
-    """Custom exception for teleportation failures."""
-    pass
-
-
-class EldenRingMemory:
-    """A simplified memory manager for handling Elden Ring's process memory."""
-
-    def __init__(self, process_name: str):
-        """Attaches to the game process and gets the base address."""
-        self.pm = None
         try:
-            self.pm = pymem.Pymem(process_name)
-            self.module_base = pymem.process.module_from_name(
-                self.pm.process_handle, process_name
-            ).lpBaseOfDll
-            logging.info(f"Successfully attached to {process_name} (PID: {self.pm.process_id})")
-            logging.info(f"Module base address: {hex(self.module_base)}")
-        except pymem.exception.ProcessNotFound:
-            logging.error(f"Process '{process_name}' not found. Please ensure the game is running.")
-            raise
+            # 2. Write our destination coordinates into the game's memory
+            # The Warp function takes a pointer to a struct of 5 integers.
+            # We pack our float coordinates into their raw 4-byte integer representation.
+            coord_data = struct.pack(
+                "<Iifff", # Format: unsigned int, int, float, float, float
+                map_id,
+                0, # Unknown/Padding integer
+                x, y, z
+            )
+            self.mm.write_bytes(coord_data_addr, coord_data)
+            print(f"Wrote coordinate data to 0x{coord_data_addr:X}")
 
-    def resolve_pointer_chain(self, base_address: int, offsets: list[int]) -> int:
-        """Follows a chain of pointers to find the final memory address."""
-        try:
-            # The first address is read from the static base + RVA
-            addr = self.pm.read_longlong(base_address)
-            # Follow the rest of the pointers
-            for offset in offsets[:-1]:
-                if addr == 0:
-                    raise TeleportationError("Pointer in chain was NULL.")
-                addr = self.pm.read_longlong(addr + offset)
-            # The final offset is added to the last resolved address
-            return addr + offsets[-1]
-        except pymem.exception.MemoryReadError as e:
-            logging.error(f"Failed to read memory during pointer chain resolution: {e}")
-            raise TeleportationError("Could not resolve pointer chain.") from e
+            # 3. Assemble the "shellcode" that will call the Warp function
+            # This is assembly language written in bytes.
+            shellcode = (
+                b"\x48\x83\xEC\x28",            # sub rsp, 0x28 (Make space on the stack)
+                b"\x48\xB9" + struct.pack("<Q", self.mm.base_address + self.GAME_MAN_STATIC), # mov rcx, [GameMan] (Load the address of the GameMan pointer)
+                b"\x48\x8B\x09",              # mov rcx, [rcx] (Dereference the pointer to get the actual GameMan object)
+                b"\x48\xBA" + struct.pack("<Q", coord_data_addr), # mov rdx, coord_data_addr (Load the address of our coordinate struct into the 2nd argument register)
+                b"\x48\xB8" + struct.pack("<Q", self.WARP_FUNCTION), # mov rax, WarpFunction (Load the address of the warp function)
+                b"\xFF\xD0",                      # call rax (Execute the warp function)
+                b"\x48\x83\xC4\x28",              # add rsp, 0x28 (Clean up the stack)
+                b"\xC3"                          # ret (Return, ending our thread)
+            )
+            #self.mm.write_bytes(shellcode_addr, shellcode)
+            print(f"Wrote shellcode to 0x{shellcode_addr:X}")
 
-    def write_bit(self, address: int, bit_index: int, value: bool):
-        """Reads a byte, modifies a specific bit, and writes it back."""
-        try:
-            current_byte = self.pm.read_bytes(address, 1)[0]
-            mask = 1 << bit_index
-            if value:
-                new_byte = current_byte | mask  # Set bit to 1
+            # 4. Create a new thread inside Elden Ring that starts by running our shellcode
+            print("Action: Creating remote thread to execute warp call...")
+            success = self.mm.create_remote_thread(shellcode_addr)
+            if success:
+                print("--- Teleport sequence executed successfully. ---")
             else:
-                new_byte = current_byte & ~mask # Set bit to 0
-            self.pm.write_bytes(address, new_byte.to_bytes(1, 'little'), 1)
-        except pymem.exception.MemoryReadError as e:
-            logging.error(f"Failed to read byte for bitwise operation at {hex(address)}: {e}")
-        except pymem.exception.MemoryWriteError as e:
-            logging.error(f"Failed to write byte for bitwise operation at {hex(address)}: {e}")
+                print("Error: Failed to create remote thread.")
 
-def safe_teleport(mem: EldenRingMemory, x: float, y: float, z: float):
-    """
-    Safely teleports the player by disabling death and gravity, moving the character,
-    and then re-enabling the original settings.
-    """
-    logging.info("--- Starting Safe Teleport ---")
-    worldchrman_base = mem.module_base + WORLDCHRMAN_RVA
-
-    try:
-        # 1. Resolve the final addresses for player coordinates, gravity, and death flag.
-        logging.info("Resolving memory addresses...")
-        addr_xyz = mem.resolve_pointer_chain(worldchrman_base, PLAYER_XYZ_OFFSETS)
-        addr_gravity = mem.resolve_pointer_chain(worldchrman_base, PLAYER_GRAVITY_OFFSETS)
-        addr_death = mem.resolve_pointer_chain(worldchrman_base, ALLOW_PLAYER_DEATH_OFFSETS)
-        logging.info(f"  - Player Coords Addr: {hex(addr_xyz)}")
-        logging.info(f"  - Player Gravity Addr: {hex(addr_gravity)}")
-        logging.info(f"  - Player Death Addr: {hex(addr_death)}")
-
-        # 2. Disable game mechanics that could kill the player during teleport.
-        logging.info("Disabling player death and gravity...")
-        # To prevent death, we write the value 1.
-        mem.pm.write_int(addr_death, 1)
-        # To disable gravity, we set the 6th bit to 0.
-        mem.write_bit(addr_gravity, 6, False)
-        time.sleep(0.05) # Brief pause to ensure game state updates.
-
-        # 3. Write the new coordinates to the player's position in memory.
-        logging.info(f"Writing new coordinates: X={x:.2f}, Y={y:.2f}, Z={z:.2f}")
-        # The coordinates are packed into bytes representing three 32-bit floats.
-        # Note: Elden Ring's coordinate system is typically X, Z, Y.
-        # We write X, Y (height), Z as per the common convention in memory tools.
-        position_bytes = struct.pack("<fff", x, y, z)
-        mem.pm.write_bytes(addr_xyz, position_bytes, len(position_bytes))
-        time.sleep(0.1) # Pause to allow the character to settle at the new location.
-
-        # 4. Re-enable the game mechanics.
-        logging.info("Re-enabling player death and gravity...")
-        # To allow death again, we write the value 0.
-        mem.pm.write_int(addr_death, 0)
-        # To re-enable gravity, we set the 6th bit back to 1.
-        mem.write_bit(addr_gravity, 6, True)
-
-        logging.info("--- Safe Teleport Complete! ---")
-
-    except (TeleportationError, pymem.exception.PymemError) as e:
-        logging.error(f"Teleportation failed: {e}")
-        logging.error("Please ensure the game is running and your character is fully loaded in a zone.")
+        finally:
+            # 5. Free the memory we allocated to be clean
+            self.mm.free_memory(coord_data_addr)
+            self.mm.free_memory(shellcode_addr)
+            print("Cleaned up allocated memory.")
+        
+        return success
 
 if __name__ == "__main__":
-    try:
-        memory_manager = EldenRingMemory(PROCESS_NAME)
-        safe_teleport(memory_manager, TARGET_X, TARGET_Y, TARGET_Z)
-    except pymem.exception.ProcessNotFound:
-        # The error is already logged by the constructor, so we just exit.
-        pass
-    except Exception as e:
-        logging.critical(f"An unexpected error occurred: {e}")
+    # To find these values, you need to go to a location and find your
+    # coordinates and the current Map ID. The Map ID is often found in the same
+    # data structure as the Stable Coords (at offset +6D4 as you noted).
+    # map_id is an integer like 10000, 10010, etc.
+    LOCATIONS = {
+        # This is an example. You MUST find the correct Map ID for Limgrave.
+        # A common value for Limgrave is 10000.
+        "firststep": {"map_id": 10000, "x": 90.4, "y": -57.5, "z": 0.3},
+    }
+
+    mm = MemoryManager()
+    if mm.is_connected():
+        teleporter = FunctionCallerTeleporter(mm)
+        target_loc = "firststep"
+        
+        print(f"\nTeleporting to '{target_loc}' in 5 seconds...")
+        time.sleep(5)
+        
+        if target_loc in LOCATIONS:
+            loc = LOCATIONS[target_loc]
+            teleporter.invoke_teleport(loc['map_id'], loc['x'], loc['y'], loc['z'])
+        else:
+            print(f"Location '{target_loc}' not found.")
