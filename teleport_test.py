@@ -55,6 +55,7 @@ class MemoryManager:
     def create_remote_thread(self, address):
         # Use ctypes to call CreateRemoteThread
         thread_start_routine = LPTHREAD_START_ROUTINE(address)
+        thread_id = DWORD(0) # Variable to store the thread ID
         thread_handle = create_remote_thread(
             self.process_handle,
             None,  # Default security attributes
@@ -62,7 +63,7 @@ class MemoryManager:
             thread_start_routine,
             None,  # No thread parameters
             0,     # Default creation flags
-            None   # No thread identifier
+            ctypes.byref(thread_id) # Pass the thread_id variable by reference
         )
 
         if thread_handle:
