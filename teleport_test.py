@@ -14,10 +14,10 @@ class MemoryManager:
     def free_memory(self, address): pymem.memory.free_memory(self.pm.process_handle, address)
     def write_bytes(self, address, data): self.pm.write_bytes(address, data, len(data))
     def create_remote_thread(self, address):
-        thread = self.pm.create_remote_thread(address, 0)
+        thread = pymem.process.create_remote_thread(self.pm.process_handle, address, 0)
         if thread:
-            self.pm.wait_for_single_object(thread[0], -1) # -1 means wait indefinitely
-            self.pm.close_handle(thread[0])
+            pymem.process.wait_for_single_object(thread[0], -1) # -1 means wait indefinitely
+            pymem.process.close_handle(thread[0])
             return True
         return False
 
@@ -74,7 +74,7 @@ class FunctionCallerTeleporter:
                 b"\x48\x83\xC4\x28",              # add rsp, 0x28 (Clean up the stack)
                 b"\xC3"                          # ret (Return, ending our thread)
             )
-            #self.mm.write_bytes(shellcode_addr, shellcode)
+            self.mm.write_bytes(shellcode_addr, b"".join(shellcode))
             print(f"Wrote shellcode to 0x{shellcode_addr:X}")
 
             # 4. Create a new thread inside Elden Ring that starts by running our shellcode
