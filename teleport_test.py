@@ -5,18 +5,26 @@ import struct
 
 class MemoryManager:
     """Verified working Memory Manager."""
-    def __init__(self, process_name="eldenring.exe"): self.pm,self.base_address=None,None; self.connect(process_name)
+    def __init__(self, process_name="eldenring.exe"): self.pm,self.base_address, self.process_handle = None,None, None; self.connect(process_name)
     def connect(self, process_name):
-        try: self.pm=pymem.Pymem(process_name); self.base_address=pymem.process.module_from_name(self.pm.process_handle,process_name).lpBaseOfDll; print(f"Connected to {process_name} @ 0x{self.base_address:X}")
-        except pymem.exception.PymemError as e: print(f"Error connecting: {e}")
-    def is_connected(self): return self.pm is not None
-    def allocate_memory(self, size): return pymem.memory.allocate_memory(self.pm.process_handle, size)
-    def free_memory(self, address): pymem.memory.free_memory(self.pm.process_handle, address)
+        try:
+            self.pm = pymem.Pymem(process_name)
+            self.process_handle = self.pm.process_handle # Store the process handle
+            self.base_address = pymem.process.module_from_name(self.process_handle, process_name).lpBaseOfDll
+            print(f"Connected to {process_name} @ 0x{self.base_address:X}")
+        except pymem.exception.PymemError as e:
+            print(f"Error connecting: {e}")
+    def is_connected(self): return self.pm is not None and self.process_handle is not None
+    def allocate_memory(self, size): return pymem.memory.allocate_memory(self.process_handle, size)
+    def free_memory(self, address): pymem.memory.free_memory(self.process_handle, address)
     def write_bytes(self, address, data): self.pm.write_bytes(address, data, len(data))
     def create_remote_thread(self, address):
-        thread = pymem.process.create_remote_thread(self.pm.process_handle, address, 0)
+        # Correctly call create_remote_thread from pymem.process
+        thread = pymem.process.create_remote_thread(self.process_handle, address, 0)
         if thread:
+            # Correctly call wait_for_single_object from pymem.process
             pymem.process.wait_for_single_object(thread[0], -1) # -1 means wait indefinitely
+            # Correctly call close_handle from pymem.process
             pymem.process.close_handle(thread[0])
             return True
         return False
