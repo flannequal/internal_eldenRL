@@ -11,13 +11,21 @@ kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
 LPVOID = ctypes.c_void_p
 HANDLE = ctypes.c_void_p
 DWORD = ctypes.c_ulong
+SIZE_T = ctypes.c_size_t # Use SIZE_T for stack size
 LPTHREAD_START_ROUTINE = ctypes.CFUNCTYPE(DWORD, LPVOID)
 
 # Define CreateRemoteThread function signature
 # https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createremotethread
 create_remote_thread = kernel32.CreateRemoteThread
 create_remote_thread.argtypes = [
-    HANDLE, LPVOID, LPVOID, LPVOID, DWORD, ctypes.POINTER(DWORD), LPVOID, ctypes.POINTER(DWORD)
+    HANDLE,                 # hProcess
+    LPVOID,                 # lpThreadAttributes
+    SIZE_T,                 # dwStackSize
+    LPTHREAD_START_ROUTINE, # lpStartAddress
+    LPVOID,                 # lpParameter
+    DWORD,                  # dwCreationFlags
+    ctypes.POINTER(DWORD),  # lpThreadId
+    ctypes.POINTER(HANDLE)  # lpThreadHandle (This is the missing argument)
 ]
 create_remote_thread.restype = HANDLE
 
@@ -56,14 +64,17 @@ class MemoryManager:
         # Use ctypes to call CreateRemoteThread
         thread_start_routine = LPTHREAD_START_ROUTINE(address)
         thread_id = DWORD(0) # Variable to store the thread ID
+        thread_handle_ptr = HANDLE(0) # Pointer to store the thread handle
+
         thread_handle = create_remote_thread(
             self.process_handle,
             None,  # Default security attributes (LPVOID)
-            0,     # Default stack size (SIZE_T, which is LPVOID in ctypes context for this)
+            0,     # Default stack size (SIZE_T)
             thread_start_routine,
             None,  # No thread parameters (LPVOID)
             0,     # Default creation flags (DWORD)
-            ctypes.byref(thread_id) # Pass the thread_id variable by reference (LPDWORD)
+            ctypes.byref(thread_id), # Pass the thread_id variable by reference (LPDWORD)
+            ctypes.byref(thread_handle_ptr) # Pass the thread_handle_ptr by reference
         )
 
         if thread_handle:
