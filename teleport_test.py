@@ -19,13 +19,13 @@ class MemoryManager:
     def free_memory(self, address): pymem.memory.free_memory(self.process_handle, address)
     def write_bytes(self, address, data): self.pm.write_bytes(address, data, len(data))
     def create_remote_thread(self, address):
-        # Correctly call create_remote_thread from pymem.process
-        thread = pymem.process.create_remote_thread(self.process_handle, address, 0)
-        if thread:
-            # Correctly call wait_for_single_object from pymem.process
-            pymem.process.wait_for_single_object(thread[0], -1) # -1 means wait indefinitely
-            # Correctly call close_handle from pymem.process
-            pymem.process.close_handle(thread[0])
+        # Correctly call create_remote_thread from pymem.process, passing the process handle
+        thread_handle = pymem.process.create_remote_thread(self.process_handle, address, 0)
+        if thread_handle:
+            # Correctly call wait_for_single_object from pymem.process, passing the thread handle
+            pymem.process.wait_for_single_object(thread_handle, -1) # -1 means wait indefinitely
+            # Correctly call close_handle from pymem.process, passing the thread handle
+            pymem.process.close_handle(thread_handle)
             return True
         return False
 
