@@ -1,7 +1,5 @@
 # Arena metadata (per boss)
-# Copy to config/arenas.yaml and fill per-arena info.
 
-version: 1
 process_name: eldenring.exe
 
 arenas:
@@ -11,11 +9,11 @@ arenas:
     map: Limgrave
     nearest_bonfire_key: 'Limgrave - Groveside Cave'
     player_spawn:
-      x: -3.797457933
-      y: -7.21598196
-      z: 2.266977549
-      cos: 0.8843095303
-      sin: 0.4669010937
+      x: 3647.912109375
+      z: 110.2190170288086
+      y: 7043.189453125
+      tpdata_hex: "98fe63452370dc428419dc454732213e00000000000000000000000000000000"
+  }
     boss:
       char_param_id: 39701910:Azula Beastman
     second_phase:

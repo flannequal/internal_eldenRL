@@ -1,50 +1,27 @@
-# Action names (used by InputController for logging and mapping)
+# config/actions.yaml
 action_names:
-  0: stop
-  1: w
-  2: s
-  3: a
-  4: d
-  5: dodge-forward
-  6: dodge-backward
-  7: dodge-left
-  8: dodge-right
-  9: attack
-  10: heavy
-  11: magic
-  12: weapon_art_light
-  13: weapon_art_heavy
-  14: running_attack
-  15: running_heavy
-  16: running_magic
-  17: jump_attack
-  18: jump_heavy
-  19: jump_magic
-  20: crouch_attack
-  21: heal
-  99: warp_to_bonfire
+  0: "stop"
+  1: "w"
+  2: "s"
+  3: "a"
+  4: "d"
+  5: "attack"
+  6: "heavy"
+  7: "dodge-forward"
+  8: "running_attack"
+  9: "heal"
+  10: "warp_to_bonfire"
 
-# Key bindings (used by InputController)
 key_bindings:
-  # General movement
-  w: w
-  s: s
-  a: a
-  d: d
-  dodge: shift
-  jump: space
-  crouch: ctrl
-
-  # Combat
-  attack: c
-  heavy_attack: v
-  magic: x
-  weapon_art: q
-  heal: e
-
-  # Menuing
-  menu: esc
-  menu_right: right
-  menu_accept: e
-  menu_left: left
-
+  w: "w"
+  a: "a"
+  s: "s"
+  d: "d"
+  attack: "left"
+  heavy_attack: "right"
+  dodge: "space"
+  jump: "space"
+  heal: "q"
+  magic: "f"
+  weapon_art: "shift"
+  crouch: "c"

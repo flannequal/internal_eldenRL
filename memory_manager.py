@@ -1,214 +1,251 @@
-# memory_manager.py
+import ctypes
+import logging
 import os
-import struct
-import yaml
-from typing import Any, Dict, Optional, Tuple
+import time
+from typing import Any, Dict, List, Optional, Tuple
+
 import pymem
 import pymem.process
+import yaml
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class MemoryManager:
     """
-    Minimal MemoryManager:
-      - attach() / detach()
-      - resolve_address(key) -> address (int) or None
-      - read_value(key) -> (addr, value) where value type depends on YAML 'type'
-      - read_int/read_float/read_longlong/read_bytes, write_bytes
-      - memory_check() - iterate addresses and try reading
+    Handles low-level memory operations for the Elden Ring process, including
+    process attachment, pointer chain resolution, and reading/writing memory.
     """
 
-    def __init__(self, process_name: str = "eldenring.exe", addresses_path: str = "config/addresses.yaml"):
+    def __init__(self, process_name: str = "eldenring.exe"):
         self.process_name = process_name
-        self.addresses_path = addresses_path
-
         self.pm: Optional[pymem.Pymem] = None
-        self.module_base: Optional[int] = None
-        self.process_handle: Optional[int] = None
+        self.module_base: int = 0
+        self.config: Dict[str, Any] = {}
+        self.attached = False
+        self._resolve_cache: Dict[str, Optional[int]] = {}
 
-        # loaded YAML
-        self.raw: Dict[str, Any] = {}
-        self._bases_static = {}
-        self._addresses = {}
-
-        if os.path.exists(self.addresses_path):
-            with open(self.addresses_path, "r", encoding="utf-8") as f:
-                self.raw = yaml.safe_load(f) or {}
-                self._bases_static = self.raw.get("bases_static", {}) or {}
-                self._addresses = self.raw.get("addresses", {}) or {}
-
-    # ---- attach / detach ----
     def attach(self) -> bool:
+        """
+        Attaches to the game process and loads memory configurations.
+        Returns True on success, False otherwise.
+        """
+        if self.attached:
+            return True
         try:
             self.pm = pymem.Pymem(self.process_name)
-            # get module base for eldenring.exe
-            module = pymem.process.module_from_name(self.pm.process_handle, self.process_name)
-            self.module_base = module.lpBaseOfDll
-            # keep raw handle for WinAPI calls if needed
-            self.process_handle = int(self.pm.process_handle)
+            self.module_base = pymem.process.module_from_name(
+                self.pm.process_handle, self.process_name
+            ).lpBaseOfDll
+            self.attached = True
+            logging.info(f"Successfully attached to {self.process_name} (PID: {self.pm.process_id}).")
+            return True
+        except pymem.exception.ProcessNotFound:
+            logging.error(f"Process '{self.process_name}' not found. Is the game running?")
+            return False
+        except Exception as e:
+            logging.error(f"An unexpected error occurred while attaching: {e}")
+            return False
+
+    def load_addresses(self, file_path: str = "addresses.yaml"):
+        """Loads memory addresses and pointer chains from a YAML file."""
+        try:
+            with open(file_path, "r") as f:
+                self.config = yaml.safe_load(f)
+            logging.info(f"Loaded memory addresses from '{file_path}'.")
+            # Clear cache when new addresses are loaded
+            self._resolve_cache = {}
+        except FileNotFoundError:
+            logging.error(f"Address configuration file not found at '{file_path}'.")
+            self.config = {}
+        except Exception as e:
+            logging.error(f"Error loading address configuration: {e}")
+            self.config = {}
+
+    def _get_full_chain(self, name: str) -> Optional[List[int]]:
+        """
+        Helper to recursively build a full list of offsets from the static base RVA.
+        """
+        config = self.config.get("pointers", {}).get(name) or self.config.get("teleport", {}).get(name)
+        
+        if config:
+            base_name = config.get("base")
+            offsets = config.get("offsets", [])
+            
+            base_chain = self._get_full_chain(base_name)
+            if base_chain is None:
+                return None
+            
+            return base_chain + offsets
+
+        if name in self.config.get("bases_static", {}):
+            return [self.config["bases_static"][name]]
+        
+        return None
+
+    def _get_address_from_config(self, name: str) -> Optional[int]:
+        """
+        REVISED 5: Final resolver implementing the confirmed logic from diagnostic "Method C".
+        """
+        if name in self._resolve_cache:
+            return self._resolve_cache[name]
+
+        full_chain = self._get_full_chain(name)
+        if not full_chain:
+            logging.error(f"Could not construct a full pointer chain for '{name}'.")
+            self._resolve_cache[name] = None
+            return None
+
+        try:
+            # The first element of the full chain is always the RVA.
+            rva = full_chain[0]
+            offsets = full_chain[1:]
+
+            # 1. Read the initial pointer value from the static base address.
+            addr = self.read_longlong(self.module_base + rva)
+            if addr is None or addr == 0:
+                logging.error(f"Chain '{name}': Failed to read initial pointer from base address {hex(self.module_base + rva)}")
+                self._resolve_cache[name] = None
+                return None
+
+            # 2. Iterate through the rest of the offsets, applying the "add then dereference" pattern.
+            for i, offset in enumerate(offsets):
+                addr += offset
+                # Don't dereference on the last step, as it's the final address of the value.
+                if i < len(offsets) - 1:
+                    addr = self.read_longlong(addr)
+                    if addr is None or addr == 0:
+                        logging.warning(f"Chain for '{name}' resolved to NULL while processing offset {hex(offset)}.")
+                        self._resolve_cache[name] = None
+                        return None
+            
+            self._resolve_cache[name] = addr
+            return addr
+
+        except Exception as e:
+            logging.error(f"Exception while resolving chain for '{name}': {e}")
+            self._resolve_cache[name] = None
+            return None
+
+    def read_pointer(self, name: str) -> Tuple[Optional[int], Any]:
+        """
+        Reads a value from a named pointer in the config.
+        Returns the final address and the read value.
+        """
+        addr = self._get_address_from_config(name)
+        if addr is None:
+            return None, None
+
+        # Determine the type of value to read
+        config = self.config.get("pointers", {}).get(name, {}) or self.config.get("teleport", {}).get(name, {})
+        value_type = config.get("type", "bytes")
+        length = config.get("length", 8)
+
+        if value_type == "int":
+            return addr, self.read_int(addr)
+        elif value_type == "float":
+            return addr, self.read_float(addr)
+        elif value_type == "longlong":
+            return addr, self.read_longlong(addr)
+        elif value_type == "bytes":
+            return addr, self.read_bytes(addr, length)
+        else:
+            logging.warning(f"Unsupported value type '{value_type}' for pointer '{name}'.")
+            return addr, None
+
+    def write_pointer(self, name: str, value: Any) -> bool:
+        """Writes a value to a named pointer in the config."""
+        addr = self._get_address_from_config(name)
+        if addr is None:
+            return False
+
+        config = self.config.get("pointers", {}).get(name, {}) or self.config.get("teleport", {}).get(name, {})
+        value_type = config.get("type", "bytes")
+
+        if value_type == "int":
+            return self.write_int(addr, value)
+        elif value_type == "float":
+            return self.write_float(addr, value)
+        elif value_type == "longlong":
+            return self.write_longlong(addr, value)
+        elif value_type == "bytes":
+            return self.write_bytes(addr, value)
+        else:
+            logging.warning(f"Unsupported value type '{value_type}' for pointer '{name}'.")
+            return False
+
+    def read_teleport_coords(self) -> Optional[Tuple[float, float, float]]:
+        """Reads the global X, Z, Y coordinates for teleporting."""
+        x_addr = self._get_address_from_config("xGlobal")
+        z_addr = self._get_address_from_config("zGlobal")
+        y_addr = self._get_address_from_config("yGlobal")
+
+        if not all([x_addr, z_addr, y_addr]):
+            logging.error("Could not resolve all global coordinate addresses for teleport.")
+            return None
+
+        x = self.read_float(x_addr)
+        z = self.read_float(z_addr)
+        y = self.read_float(y_addr)
+
+        if x is None or z is None or y is None:
+            return None
+        return x, z, y
+
+    # --- Primitive Read/Write Operations ---
+    def read_bytes(self, address: int, length: int) -> Optional[bytes]:
+        if not self.attached or not self.pm: return None
+        try:
+            return self.pm.read_bytes(address, length)
+        except Exception as e:
+            logging.debug(f"Failed to read {length} bytes at {hex(address)}: {e}")
+            return None
+
+    def write_bytes(self, address: int, value: bytes) -> bool:
+        if not self.attached or not self.pm: return False
+        try:
+            self.pm.write_bytes(address, value, len(value))
             return True
         except Exception as e:
-            # minimal feedback
-            print(f"[MemoryManager] attach failed: {e}")
-            self.pm = None
-            self.module_base = None
-            self.process_handle = None
+            logging.debug(f"Failed to write {len(value)} bytes to {hex(address)}: {e}")
             return False
 
-    def detach(self) -> None:
-        try:
-            if self.pm:
-                self.pm.close_process()
-        except Exception:
-            pass
-        self.pm = None
-        self.module_base = None
-        self.process_handle = None
+    def read_int(self, address: int) -> Optional[int]:
+        data = self.read_bytes(address, 4)
+        return int.from_bytes(data, 'little', signed=True) if data else None
 
-    # ---- low-level read / write primitives ----
-    def read_bytes(self, addr: int, size: int) -> Optional[bytes]:
-        if not self.pm:
-            return None
+    def write_int(self, address: int, value: int) -> bool:
+        return self.write_bytes(address, value.to_bytes(4, 'little', signed=True))
+
+    def read_float(self, address: int) -> Optional[float]:
+        data = self.read_bytes(address, 4)
+        if not data: return None
+        import struct
+        return struct.unpack('<f', data)[0]
+
+    def write_float(self, address: int, value: float) -> bool:
+        import struct
+        return self.write_bytes(address, struct.pack('<f', value))
+
+    def read_longlong(self, address: int) -> Optional[int]:
+        data = self.read_bytes(address, 8)
+        return int.from_bytes(data, 'little') if data else None
+
+    def write_longlong(self, address: int, value: int) -> bool:
+        return self.write_bytes(address, value.to_bytes(8, 'little'))
+        
+    def allocate(self, size: int) -> Optional[int]:
+        if not self.attached or not self.pm: return None
         try:
-            return self.pm.read_bytes(addr, size)
-        except Exception:
+            return self.pm.allocate(size)
+        except Exception as e:
+            logging.error(f"Failed to allocate memory: {e}")
             return None
 
-    def write_bytes(self, addr: int, data: bytes) -> bool:
-        if not self.pm:
+    def free(self, address: int) -> bool:
+        if not self.attached or not self.pm: return False
+        try:
+            # pymem's free is a wrapper for VirtualFreeEx with MEM_RELEASE
+            return self.pm.free(address)
+        except Exception as e:
+            logging.error(f"Failed to free memory at {hex(address)}: {e}")
             return False
-        try:
-            self.pm.write_bytes(addr, data, len(data))
-            return True
-        except Exception:
-            return False
-
-    def read_int(self, addr: int) -> Optional[int]:
-        b = self.read_bytes(addr, 4)
-        if not b or len(b) < 4:
-            return None
-        return struct.unpack("<i", b)[0]
-
-    def read_u32(self, addr: int) -> Optional[int]:
-        b = self.read_bytes(addr, 4)
-        if not b or len(b) < 4:
-            return None
-        return struct.unpack("<I", b)[0]
-
-    def read_float(self, addr: int) -> Optional[float]:
-        b = self.read_bytes(addr, 4)
-        if not b or len(b) < 4:
-            return None
-        return struct.unpack("<f", b)[0]
-
-    def read_longlong(self, addr: int) -> Optional[int]:
-        b = self.read_bytes(addr, 8)
-        if not b or len(b) < 8:
-            return None
-        return struct.unpack("<Q", b)[0]
-
-    # ---- address resolver (supports bases_static and recursive address bases) ----
-    def resolve_address(self, key: str) -> Optional[int]:
-        """
-        Resolve an address by key in addresses.yaml.
-        Semantics:
-          - if the entry.base refers to a bases_static key, start at (module_base + base_offset).
-          - if entry.base refers to another address key, resolve that recursively.
-          - offsets: list of ints (hex strings allowed). Implementation:
-              addr = base_addr + offsets[0]
-              for each subsequent offset in offsets[1:]:
-                  ptr = read_longlong(addr)
-                  addr = ptr + offset
-              return addr
-        If offsets is a single element, the returned address is module_base + offset (no deref).
-        """
-        if self.pm is None or self.module_base is None:
-            return None
-        if key not in self._addresses:
-            return None
-        entry = self._addresses[key]
-        base_ref = entry.get("base")
-        offsets = entry.get("offsets", [])
-        # parse offsets
-        offs = []
-        for o in offsets:
-            if isinstance(o, str) and o.lower().startswith("0x"):
-                offs.append(int(o, 16))
-            else:
-                offs.append(int(o))
-
-        # determine base address
-        if isinstance(base_ref, str) and base_ref in self._bases_static:
-            base_offset = self._bases_static[base_ref]
-            base_addr = self.module_base + int(base_offset)
-        elif isinstance(base_ref, str) and base_ref in self._addresses:
-            # recursive resolve: the base is another named address (that returns an address, not value)
-            base_addr = self.resolve_address(base_ref)
-            if base_addr is None:
-                return None
-        else:
-            # unknown base type - fail
-            return None
-
-        if not offs:
-            return base_addr
-
-        # first step: module_base/base + offs[0]
-        addr = base_addr + offs[0]
-
-        # if only one offset, return addr (no deref)
-        for o in offs[1:]:
-            ptr = self.read_longlong(addr)
-            if ptr is None:
-                return None
-            addr = ptr + o
-        return addr
-
-    # ---- read_value convenience: returns (addr, value) ----
-    def read_value(self, key: str) -> Tuple[Optional[int], Optional[Any]]:
-        """
-        Read a value for the given address key according to YAML 'type'.
-        Returns (resolved_addr, value)
-        Supported types: int, float, bytes (needs length), ptr
-        """
-        if key not in self._addresses:
-            return None, None
-        entry = self._addresses[key]
-        typ = entry.get("type", "int")
-        length = entry.get("length")
-        addr = self.resolve_address(key)
-        if not addr:
-            return None, None
-        if typ == "int":
-            return addr, self.read_int(addr)
-        if typ == "u32":
-            return addr, self.read_u32(addr)
-        if typ == "float":
-            return addr, self.read_float(addr)
-        if typ == "ptr":
-            return addr, self.read_longlong(addr)
-        if typ == "bytes":
-            if not length:
-                return addr, None
-            return addr, self.read_bytes(addr, int(length))
-        # fallback: raw bytes 4
-        return addr, self.read_bytes(addr, 4)
-
-    # ---- memory check utility ----
-    def memory_check(self) -> Dict[str, Dict[str, Any]]:
-        """
-        Attempt to read each declared address and report success/failure + sample value.
-        Returns dict keyed by address key with {'ok':bool, 'addr':hex or None, 'value':...}
-        """
-        results = {}
-        for k in self._addresses.keys():
-            addr = None
-            value = None
-            try:
-                addr = self.resolve_address(k)
-                if addr:
-                    _, value = self.read_value(k)
-                    results[k] = {"ok": True, "addr": hex(addr), "value": value}
-                else:
-                    results[k] = {"ok": False, "addr": None, "value": None}
-            except Exception as e:
-                results[k] = {"ok": False, "addr": hex(addr) if addr else None, "value": None, "error": str(e)}
-        return results

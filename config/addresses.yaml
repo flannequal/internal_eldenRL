@@ -1,131 +1,97 @@
+# This file defines all memory addresses, pointer chains, and offsets.
+# This version has been corrected to precisely match the working Cheat Engine scripts.
+
+# Static bases are defined as RVAs (Relative Virtual Addresses) from the module base.
 bases_static:
   WorldChrMan: 0x3D65F88
-  LocalPlayerOffset: 0x10EF8
-  MapItemMan: 0x3D67A50
-  GameMan: 0x3D69918
   GameDataMan: 0x3D5DF38
+  GameMan: 0x3D69918
   FieldArea: 0x3D691D8
   LockTgtMan: 0x3D6A208
-  DamageCtrl: 0x3D66378
-  TeleportFunction: 0x1337040
-  CSLuaEventManager: 0x3D67E48
-  CSLuaEventMan: 0x3D67E48
-  WarpFunction: 0x599CD0
-  Warp: 0x20000
   NetManImp: 0x3D5AE60
 
-
-addresses:
-  PlayerGameData:
-    base: GameDataMan
-    offsets: [0x8] 
-    type: ptr
-  
-  EquipInventoryData_Player:
-    base: PlayerGameData
-    offsets: [0x538]
-    type: ptr
-
-  # LocalPlayerOffset:
-  #   base: WorldChrMan
-  #   offsets: [0x10EF8]
-  #   type: ptr
-
-  Inventory:
-    entry_size: 0x18
-    list_offset_in_EquipInventoryData: 0x10
-    count_offset_in_EquipInventoryData: 0x18
-    key_offset_stride: 0x10
-
-  InventoryEntryFields:
-    handle: 0x00
-    raw_itemid: 0x04
-    quantity: 0x08
-
-  PlayerHP:
+# Pointers are complex addresses that require walking a pointer chain.
+# Each pointer has a 'base' (which must be a name from 'bases_static' or another pointer)
+# and a list of 'offsets'.
+pointers:
+  # Intermediate Pointers for clarity and structure
+  LocalPlayer:
     base: WorldChrMan
-    offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x138]
+    offsets: [0x10EF8, 0x0] # This chain gets us to the player's base entity
+    type: longlong
+
+  PlayerStatsComponent:
+    base: LocalPlayer
+    offsets: [0x190, 0x0] # This gets us to the stats component
+    type: longlong
+
+  PlayerTransformComponent:
+    base: LocalPlayer
+    offsets: [0x190, 0x68] # This gets us to the transform/physics component
+    type: longlong
+
+  # Player Stats (now based on the intermediate pointers)
+  PlayerHP:
+    base: PlayerStatsComponent
+    offsets: [0x138]
     type: int
   PlayerMaxHP:
-    base: WorldChrMan
-    offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x13C]
+    base: PlayerStatsComponent
+    offsets: [0x13C]
     type: int
   PlayerSP:
-    base: WorldChrMan
-    offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x154]
+    base: PlayerStatsComponent
+    offsets: [0x154]
     type: int
   PlayerMaxSP:
-    base: WorldChrMan
-    offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x158]
+    base: PlayerStatsComponent
+    offsets: [0x158]
     type: int
   PlayerMP:
-    base: WorldChrMan
-    offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x148]
+    base: PlayerStatsComponent
+    offsets: [0x148]
     type: int
   PlayerMaxMP:
-    base: WorldChrMan
-    offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x150]
-    type: int
-
-  PlayerXYZA: # Array of bytes for player data. X: +0, Y: +4, Z: +8, Angle: +C, MapID: +10
-    base: WorldChrMan
-    offsets: [0x10EF8, 0x0, 0x6C0]
-    type: bytes
-    length: 20
-  PlayerAnimation:
-    base: WorldChrMan
-    offsets: [0x10EF8, 0x0, 0x190, 0x18, 0x20]
+    base: PlayerStatsComponent
+    offsets: [0x150]
     type: int
   PlayerGravity:
-    base: WorldChrMan
-    offsets: [0x10EF8, 0x0, 0x190, 0x68, 0x1D3]
+    base: PlayerTransformComponent
+    offsets: [0x1D3]
     type: int
-  AllowPlayerDeath:
-    base: WorldChrMan
-    offsets: [0x10EF8, 0x0, 0x190, 0x0, 0x19B]
-    type: int
+
   LastGrace:
     base: GameMan
     offsets: [0xB30]
     type: int
-  Time:
-    base: GameMan
-    offsets: [0xA0]
-    type: int
-  LocalCam:
-    base: FieldArea
-    offsets: [0x20, 0x18, 0x30]
-    type: bytes
-    length: 28
-  ChunkCamXYZ:
-    base: FieldArea
-    offsets: [0x20, 0xD0, 0x40]
-    type: bytes
-    length: 12
-  PlayerStats:
-    base: GameMan
-    offsets: [0x08, 0x3C]
-    type: int
-  LockOn:
-    base: LockTgtMan
-    offsets: [0x2831]
-    type: bytes
-    length: 1
-  
-  BossAnimation:
-    base: WorldChrMan # Boss entity base
-    offsets: [0x123, 0x456, 0x78] # Placeholder: Path to boss animation ID needs to be found
-    type: int
-  BossStaggerFlag:
-    base: WorldChrMan # Boss entity base
-    offsets: [0xABC, 0xDEF] # Placeholder: Path to boss stagger flag (e.g., boolean or int) needs to be found
 
-# Helper offsets for list scanning (optional; used for custom boss targeting)
-worldchrman:
-  character_list_begin_off: 0x1F1B8
-  character_list_end_off: 0x1F1C0
-character:
-  comp_190_off: 0x190
-  stats_qword_off: 0x138
-  transform_68_off: 0x68
-  pos_xyz_off: 0x70
+# Teleport-specific pointers, mirroring the Cheat Engine table logic.
+teleport:
+  # Player's local coordinates (what we write to)
+  xPlayer:
+    base: PlayerTransformComponent
+    offsets: [0x70]
+    type: float
+  zPlayer:
+    base: PlayerTransformComponent
+    offsets: [0x74]
+    type: float
+  yPlayer:
+    base: PlayerTransformComponent
+    offsets: [0x78]
+    type: float
+  
+  # Game's global coordinates (what we read from)
+  # This chain exactly matches "[[[[[[NetManImp]+ 80]+ E0] + 80] + 20] + 98] + 28"
+  xGlobal:
+    base: NetManImp
+    offsets: [0x80, 0xE0, 0x80, 0x20, 0x98, 0x28]
+    type: float
+  zGlobal:
+    base: NetManImp
+    offsets: [0x80, 0xE0, 0x80, 0x20, 0x98, 0x1C]
+    type: float
+  yGlobal:
+    base: NetManImp
+    offsets: [0x80, 0xE0, 0x80, 0x20, 0x98, 0x2C]
+    type: float
