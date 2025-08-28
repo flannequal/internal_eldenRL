@@ -12,6 +12,7 @@ bases_static:
   CSLuaEventMan: 0x3D67E48
   WarpFunction: 0x599CD0
   Warp: 0x20000
+  NetManImp: 0x3D5AE60
 
 
 addresses:
