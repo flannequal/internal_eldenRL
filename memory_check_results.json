@@ -1,0 +1,164 @@
+{
+  "PlayerGameData": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "EquipInventoryData_Player": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "Inventory": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "InventoryEntryFields": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "PlayerHP": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "PlayerMaxHP": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "PlayerSP": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "PlayerMaxSP": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "PlayerMP": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "PlayerMaxMP": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "xGlobalPtr": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "zGlobalPtr": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "yGlobalPtr": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "xPtrTp": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "zPtrTp": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "yPtrTp": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "gravityPtr": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "AllowPlayerDeath": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "LastGrace": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "Time": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "LocalCam": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "ChunkCamXYZ": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "PlayerStats": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "LockOn": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "PlayerAnimation": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "BossAnimation": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  },
+  "BossStaggerFlag": {
+    "ok": false,
+    "addr": null,
+    "value": null,
+    "error": "MemoryManager.resolve_address() missing 2 required positional arguments: 'rva' and 'offsets'"
+  }
+}

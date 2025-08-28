@@ -243,7 +243,7 @@ class TeleportManager:
             write_f32_pm(self.pm, xPtrAddr, xNew)
             write_f32_pm(self.pm, zPtrAddr, zNew)
             write_f32_pm(self.pm, yPtrAddr, yNew)
-            time.sleep(5)
+            time.sleep(0.2)
             write_int32_pm(self.pm, gravity_addr, 0)
 
             print(f"[+] Teleported to '{name}' (xNew={xNew} zNew={zNew} yNew={yNew})")

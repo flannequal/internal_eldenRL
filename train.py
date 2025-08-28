@@ -32,8 +32,9 @@ def train(CREATE_NEW_MODEL, config):
     logging.info("Folder structure created...")
 
     try:
-        from EldenHybridEnv import EldenHybridEnv
+        from elden_env import EldenHybridEnv
         env = EldenHybridEnv(config)
+
         logging.info("EldenHybridEnv initialized.")
     except ImportError:
         logging.error(
