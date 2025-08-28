@@ -1,143 +1,180 @@
 import logging
 import time
+import os
+import yaml
 from typing import Any, Dict, Optional, Tuple
 
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
+import mss
+import cv2
 
 from elden_game import EldenRingGame
+from input_controller import InputController
 
 class EldenEnv(gym.Env):
     """
-    A Gymnasium-like environment for Elden Ring, designed for reinforcement learning.
-    It uses the high-level EldenRingGame API to interact with the game.
+    A hybrid vision/memory environment for Elden Ring.
     """
     metadata = {'render_modes': []}
 
-    def __init__(self):
+    def __init__(self, env_config: Dict[str, Any]):
         super().__init__()
         
+        self.total_steps = 0
+        self.episode_start_time = time.time()
+        self.last_info = {}
+        
         try:
-            self.game = EldenRingGame()
+            arenas_path = os.path.join('config', 'arenas.yaml')
+            actions_path = os.path.join('config', 'actions.yaml')
+            
+            self.game = EldenRingGame(arenas_path=arenas_path)
+            self.input_controller = InputController(actions_config_path=actions_path)
+            self.sct = mss.mss()
+
         except RuntimeError as e:
             logging.error(f"Could not initialize Elden Ring environment: {e}")
             self.game = None
             return
+            
+        self.arena_id = env_config.get("BOSS", 1)
+        self.training_mode = env_config.get("TRAINING_MODE", "standard")
+        self.arena_config = self.game.arenas.get(self.arena_id)
+        if not self.arena_config:
+            raise ValueError(f"Arena ID {self.arena_id} not found in arenas.yaml")
 
-        # Define action and observation spaces
-        # Example: 8 actions (move f/b/l/r, attack, dodge, jump, use item)
-        self.action_space = spaces.Discrete(8)
+        with open(actions_path, 'r') as f:
+            self.actions_config = yaml.safe_load(f)['actions']
+            num_actions = len(self.actions_config)
+        self.action_space = spaces.Discrete(num_actions)
 
-        # Observation space: player stats and position
-        # [hp, max_hp, sp, max_sp, mp, max_mp, pos_x, pos_y, pos_z]
-        self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(9,), dtype=np.float32
-        )
+        # --- Hybrid Observation Space (Vision + Data) ---
+        self.observation_space = spaces.Dict({
+            "vision": spaces.Box(low=0, high=255, shape=(90, 160, 3), dtype=np.uint8),
+            "data": spaces.Box(low=0.0, high=1.0, shape=(2,), dtype=np.float32) # [player_hp, boss_hp]
+        })
         
-        self.last_hp = 0
+        self.last_player_hp = 1.0
+        self.last_boss_hp = 1.0
+        self.last_distance = 0.0
 
-    def _get_observation(self) -> Optional[np.ndarray]:
-        """Constructs the observation array from the current game state."""
+    def _get_observation(self) -> Optional[Dict[str, np.ndarray]]:
         if not self.game: return None
 
-        stats = self.game.get_player_stats()
-        pos = self.game.get_player_position()
+        # --- Capture Vision ---
+        monitor = self.sct.monitors[1]
+        sct_img = self.sct.grab(monitor)
+        frame = np.array(sct_img)
+        # Resize for the model (e.g., 160x90)
+        vision_obs = cv2.resize(frame, (160, 90))
+        vision_obs = cv2.cvtColor(vision_obs, cv2.COLOR_BGRA2RGB)
 
-        if not stats or not pos:
-            logging.warning("Failed to get complete game state for observation.")
-            return np.zeros(self.observation_space.shape, dtype=np.float32)
-
-        obs = np.array([
-            stats.get('hp', 0),
-            stats.get('max_hp', 0),
-            stats.get('sp', 0),
-            stats.get('max_sp', 0),
-            stats.get('mp', 0),
-            stats.get('max_mp', 0),
-            pos[0], pos[1], pos[2]
-        ], dtype=np.float32)
+        # --- Capture Data ---
+        player_stats = self.game.get_player_stats()
+        boss_stats = self.game.get_boss_hp()
         
-        return obs
+        if not player_stats or not boss_stats: return None
+
+        player_hp_norm = player_stats.get('hp', 0) / max(1, player_stats.get('max_hp', 1))
+        boss_hp_norm = boss_stats[0] / max(1, boss_stats[1])
+        
+        data_obs = np.array([player_hp_norm, boss_hp_norm], dtype=np.float32)
+
+        return {"vision": vision_obs, "data": data_obs}
 
     def reset(self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None) -> Tuple[Any, Dict[str, Any]]:
-        """
-        Resets the environment to an initial state.
-        For Elden Ring, this could mean teleporting to a starting point.
-        """
         super().reset(seed=seed)
         if not self.game:
-            return np.zeros(self.observation_space.shape, dtype=np.float32), {}
+            return self.observation_space.sample(), {}
 
-        logging.info("Resetting environment...")
-        # For a real scenario, you would save a "start" location and teleport there.
-        # self.game.teleport("start_arena")
-        # For now, we just get the current state.
+        logging.info("Resetting... waiting for death state or cutscene to end.")
+        player_hp = self.game.get_player_stats().get('hp', 0)
+        while self.game.is_in_cutscene() or player_hp <= 0:
+            time.sleep(0.5)
+            player_hp = self.game.get_player_stats().get('hp', 0)
+        logging.info("Player is alive. Proceeding with teleport.")
+
+        if not self.game.teleport_to_arena(self.arena_id):
+            return self.observation_space.sample(), {"error": "teleport_failed"}
         
+        time.sleep(2.0)
+        
+        boss_param_id_str = str(self.arena_config.get("boss", {}).get("char_param_id", ""))
+        boss_param_id = int(boss_param_id_str.split(':')[0])
+        if not self.game.find_boss_entity(boss_param_id):
+             return self.observation_space.sample(), {"error": "boss_not_found"}
+
+        logging.info("Attempting to lock on to boss...")
+        self.input_controller.lock_on()
+        time.sleep(0.5)
+
+        self.episode_start_time = time.time()
         initial_obs = self._get_observation()
         if initial_obs is not None:
-            self.last_hp = initial_obs[0]
+            self.last_player_hp = initial_obs["data"][0]
+            self.last_boss_hp = initial_obs["data"][1]
         
         return initial_obs, {}
 
     def step(self, action: int) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
-        """
-        Executes one time step within the environment.
-        """
         if not self.game:
-            return np.zeros(self.observation_space.shape, dtype=np.float32), 0.0, True, False, {}
+            return self.observation_space.sample(), 0.0, True, False, {}
 
-        # 1. Execute the action (this part requires an input controller)
-        # For now, we'll just log the action.
-        logging.info(f"Executing action: {action}")
-        # e.g., self.input_controller.perform(action)
-        time.sleep(0.1) # Simulate action time
+        self.total_steps += 1
+        action_name = self.actions_config.get(action, {}).get("name", "UNKNOWN")
 
-        # 2. Get the new observation
+        self.input_controller.take_action(action)
+        time.sleep(0.1)
+
         obs = self._get_observation()
         if obs is None:
-            # If we can't get an observation, it's a terminal state
-            return np.zeros(self.observation_space.shape, dtype=np.float32), 0.0, True, False, {}
+            return self.observation_space.sample(), 0.0, False, False, {}
 
-        # 3. Calculate the reward
-        reward = 0.0
-        current_hp = obs[0]
+        player_hp_norm = obs["data"][0]
+        boss_hp_norm = obs["data"][1]
+        distance = self.game.get_distance_to_boss() or self.last_distance
         
-        if current_hp < self.last_hp:
-            reward -= 10 # Penalty for taking damage
-        elif current_hp > self.last_hp:
-            reward += 5 # Reward for healing
-            
-        self.last_hp = current_hp
+        # --- Continuous Reward Calculation ---
+        reward_breakdown = {
+            "boss_damage": (self.last_boss_hp - boss_hp_norm) * 150.0,
+            "hp_penalty": (self.last_player_hp - player_hp_norm) * 100.0,
+            "distance": 0.0,
+            "time_alive": 0.0,
+            "win_bonus": 0.0,
+            "lose_penalty": 0.0
+        }
 
-        # 4. Determine if the episode is done
-        terminated = bool(current_hp <= 0) # Episode ends if player dies
-        truncated = False # Not using time limits for now
+        # Smooth distance reward
+        if self.training_mode == 'aggressive':
+            # Reward is highest at dist=0, lowest at dist=15. Range [-2, 8]
+            reward_breakdown["distance"] = -0.66 * min(distance, 15) + 8
+        elif self.training_mode == 'defensive':
+            # Reward is highest at dist=20, lowest at dist=0. Range [-8, 2]
+            reward_breakdown["distance"] = 0.5 * min(distance, 20) - 8
 
-        return obs, reward, terminated, truncated, {}
+        self.last_player_hp = player_hp_norm
+        self.last_boss_hp = boss_hp_norm
+        self.last_distance = distance
 
-    def render(self):
-        """Rendering is handled by the game window itself."""
-        pass
+        terminated = False
+        if player_hp_norm <= 0.01:
+            reward_breakdown["lose_penalty"] = -100.0
+            terminated = True
+        if boss_hp_norm <= 0.01:
+            reward_breakdown["win_bonus"] = 200.0
+            terminated = True
+        
+        if terminated:
+            time_alive = time.time() - self.episode_start_time
+            reward_breakdown["time_alive"] = max(0, time_alive * 0.1) # 0.1 points per second survived
+
+        total_reward = sum(reward_breakdown.values())
+        self.last_info = {"reward_breakdown": reward_breakdown}
+
+        return obs, total_reward, terminated, False, self.last_info
 
     def close(self):
-        """Closes the game connection."""
-        if self.game:
-            self.game.close()
-
-if __name__ == '__main__':
-    # Example usage of the environment
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    env = EldenEnv()
-    if env.game:
-        obs, info = env.reset()
-        print("Initial Observation:", obs)
-        
-        # Simulate a few steps
-        for i in range(5):
-            action = env.action_space.sample() # Random action
-            obs, reward, terminated, truncated, info = env.step(action)
-            print(f"Step {i+1}: Action={action}, Reward={reward}, Terminated={terminated}")
-            if terminated:
-                break
-        env.close()
+        if self.input_controller: self.input_controller.release_all()
+        if self.game: self.game.close()

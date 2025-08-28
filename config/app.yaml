@@ -8,3 +8,12 @@ SIMULATE_MEMORY: false
 DISABLE_INPUT: false
 LOG_MEMORY_DEBUG: false
 MEMORY_DEBUG_INTERVAL: 1
+
+TIMESTEPS_PER_ITERATION: 20000
+
+# Heuristic mode for the agent's reward function.
+# Options:
+#   - "standard": Focuses only on damage dealt and received.
+#   - "aggressive": Rewards the agent for staying close to the boss.
+#   - "defensive": Rewards the agent for maintaining distance.
+TRAINING_MODE: "defensive"

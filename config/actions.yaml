@@ -1,27 +1,16 @@
-# config/actions.yaml
-action_names:
-  0: "stop"
-  1: "w"
-  2: "s"
-  3: "a"
-  4: "d"
-  5: "attack"
-  6: "heavy"
-  7: "dodge-forward"
-  8: "running_attack"
-  9: "heal"
-  10: "warp_to_bonfire"
+# This is the single source of truth for all agent actions.
+# It maps a descriptive action name to an action ID and a physical key/button.
+actions:
+  0: { name: "stop", key: null }
+  1: { name: "move_forward", key: "w" }
+  2: { name: "move_backward", key: "s" }
+  3: { name: "move_left", key: "a" }
+  4: { name: "move_right", key: "d" }
+  5: { name: "light_attack", key: "left" } # Correctly maps to the left mouse button
+  6: { name: "dodge", key: "space" }
+  7: { name: "jump", key: "f" }
+  8: { name: "heal", key: "r" }
 
-key_bindings:
-  w: "w"
-  a: "a"
-  s: "s"
-  d: "d"
-  attack: "left"
-  heavy_attack: "right"
-  dodge: "space"
-  jump: "space"
-  heal: "q"
-  magic: "f"
-  weapon_art: "shift"
-  crouch: "c"
+# Special key bindings used by the input controller for complex actions.
+special_keys:
+  sprint: "space"

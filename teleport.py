@@ -39,17 +39,12 @@ class TeleportManager:
         logging.info(f"Saved location '{name}': (X: {x:.2f}, Z: {z:.2f}, Y: {y:.2f})")
         return True
 
-    def teleport_to_location(self, name: str) -> bool:
+    def teleport_to_coords(self, x: float, z: float, y: float) -> bool:
         """
-        Teleports the player to a previously saved location using the precise
+        Teleports the player to a specific set of coordinates using the precise
         Cheat Engine logic.
         """
-        location = self.locations.get(name)
-        if not location:
-            logging.error(f"Location '{name}' not found.")
-            return False
-
-        logging.info(f"Initiating teleport to '{name}'...")
+        logging.info(f"Initiating teleport to (X:{x:.2f}, Z:{z:.2f}, Y:{y:.2f})...")
 
         # 1. Get addresses for all required pointers
         addr_x_player = self.mem._get_address_from_config("xPlayer")
@@ -76,30 +71,12 @@ class TeleportManager:
             logging.error("Failed to read one or more coordinate values from memory.")
             return False
             
-        # 3. Allocate remote memory for TPData and write the saved location data into it
-        tp_data_bytes = bytes.fromhex(location["tp_data_hex"])
-        remote_addr = self.mem.allocate(len(tp_data_bytes))
-        if not remote_addr:
-            return False
-            
-        self.mem.write_bytes(remote_addr, tp_data_bytes)
-        
-        # 4. Read the target coordinates back from the remote TPData blob
-        # This mirrors the CE script's logic of reading from the allocated memory.
-        read_back_bytes = self.mem.read_bytes(remote_addr, 12)
-        if not read_back_bytes:
-            self.mem.free(remote_addr)
-            return False
-        
-        target_x, target_z, target_y = struct.unpack("<fff", read_back_bytes)
+        # 3. Perform the coordinate calculation (exact CE logic)
+        new_x = x - (val_x_global - val_x_player)
+        new_z = z - (val_z_global - val_z_player)
+        new_y = (y - (val_y_global + val_y_player)) * -1
 
-        # 5. Perform the coordinate calculation (exact CE logic)
-        new_x = target_x - (val_x_global - val_x_player)
-        new_z = target_z - (val_z_global - val_z_player)
-        # The Y coordinate calculation is intentionally different as per the CE script.
-        new_y = (target_y - (val_y_global + val_y_player)) * -1
-
-        # 6. Disable gravity, write new coordinates, wait, and re-enable gravity
+        # 4. Disable gravity, write new coordinates, wait, and re-enable gravity
         logging.info("Disabling gravity and writing new coordinates...")
         self.mem.write_int(addr_gravity, 1) # Disable gravity
         time.sleep(0.05)
@@ -108,12 +85,18 @@ class TeleportManager:
         self.mem.write_float(addr_z_player, new_z)
         self.mem.write_float(addr_y_player, new_y)
         
-        time.sleep(0.1) # Give the game time to process the new position
+        time.sleep(1.5) # Give the game time to process the new position
         
         self.mem.write_int(addr_gravity, 0) # Re-enable gravity
         logging.info("Gravity re-enabled. Teleport complete.")
 
-        # 7. Clean up the allocated memory
-        self.mem.free(remote_addr)
-
         return True
+
+    def teleport_to_location(self, name: str) -> bool:
+        """Teleports the player to a previously saved location."""
+        location = self.locations.get(name)
+        if not location:
+            logging.error(f"Location '{name}' not found.")
+            return False
+        
+        return self.teleport_to_coords(location['x'], location['z'], location['y'])
