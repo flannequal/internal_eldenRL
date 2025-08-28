@@ -46,7 +46,7 @@ class MemoryManager:
             logging.error(f"An unexpected error occurred while attaching: {e}")
             return False
 
-    def load_addresses(self, file_path: str = "addresses.yaml"):
+    def load_addresses(self, file_path: str = "config/addresses.yaml"):
         """Loads memory addresses and pointer chains from a YAML file."""
         try:
             with open(file_path, "r") as f:
@@ -199,7 +199,7 @@ class MemoryManager:
         except Exception as e:
             logging.debug(f"Failed to read {length} bytes at {hex(address)}: {e}")
             return None
-
+    
     def write_bytes(self, address: int, value: bytes) -> bool:
         if not self.attached or not self.pm: return False
         try:
@@ -208,6 +208,10 @@ class MemoryManager:
         except Exception as e:
             logging.debug(f"Failed to write {len(value)} bytes to {hex(address)}: {e}")
             return False
+        
+    def read_byte(self, address: int) -> Optional[int]:
+        data = self.read_bytes(address, 1)
+        return int.from_bytes(data, 'little') if data else None
 
     def read_int(self, address: int) -> Optional[int]:
         data = self.read_bytes(address, 4)

@@ -11,7 +11,8 @@ def check_memory_addresses():
     mem = MemoryManager("eldenring.exe")
     if not mem.attach():
         return
-        
+    
+    logging.info(f"BASE ADDRESS: {hex(mem.module_base)}")
     mem.load_addresses("config/addresses.yaml")
     
     config = mem.config

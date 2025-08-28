@@ -20,13 +20,12 @@ except Exception:
 
 if __name__ == '__main__':
     env_config = {}
-    cfg_path = os.environ.get('ELDENRL_APP_CONFIG',
-                              os.path.join('config', 'app.yaml'))
+    cfg_path = os.path.join('config', 'app.yaml') 
     if yaml is not None and os.path.isfile(cfg_path):
         with open(cfg_path, 'r', encoding='utf-8') as f:
             env_config = yaml.safe_load(f) or {}
     elif yaml is not None and os.path.isfile(os.path.join('config', 'app.sample.yaml')):
-        with open(os.path.join('config', 'app.sample.yaml'), 'r', encoding='utf-8') as f:
+        with open(os.path.join('config', 'app.yaml'), 'r', encoding='utf-8') as f:
             env_config = yaml.safe_load(f) or {}
     else:
         env_config = {
@@ -41,4 +40,4 @@ if __name__ == '__main__':
     CREATE_NEW_MODEL = True
     # Create a new model or resume training for an existing model
 
-    train.train(CREATE_NEW_MODEL, env_config)
+    train.train(env_config)

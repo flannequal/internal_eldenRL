@@ -5,17 +5,11 @@ process_name: eldenring.exe
 arenas:
   - id: 8
     name: Beastman
-    map_id: 1F030000
-    map: Limgrave
     nearest_bonfire_key: 'Limgrave - Groveside Cave'
     player_spawn:
-      x: 3647.912109375
-      z: 110.2190170288086
-      y: 7043.189453125
-      tpdata_hex: "98fe63452370dc428419dc454732213e00000000000000000000000000000000"
-  }
+      x: 3613.126708984375
+      z: 89.67256927490234
+      y: 6971.68212890625
+      tpdata_hex: "07d261455b58b34275ddd9454732213e00000000000000000000000000000000"
     boss:
       char_param_id: 39701910:Azula Beastman
-    second_phase:
-      trigger_flag_addr: null
-    notes: "Fill spawn coords in coordinates.yaml; verify addresses per version."

@@ -9,7 +9,7 @@ bases_static:
   FieldArea: 0x3D691D8
   LockTgtMan: 0x3D6A208
   NetManImp: 0x3D5AE60
-
+  EventFlagMan: 0x3D68448
 # Pointers are complex addresses that require walking a pointer chain.
 # Each pointer has a 'base' (which must be a name from 'bases_static' or another pointer)
 # and a list of 'offsets'.
@@ -35,26 +35,32 @@ pointers:
     base: PlayerStatsComponent
     offsets: [0x138]
     type: int
+
   PlayerMaxHP:
     base: PlayerStatsComponent
     offsets: [0x13C]
     type: int
+
   PlayerSP:
     base: PlayerStatsComponent
     offsets: [0x154]
     type: int
+
   PlayerMaxSP:
     base: PlayerStatsComponent
     offsets: [0x158]
     type: int
+
   PlayerMP:
     base: PlayerStatsComponent
     offsets: [0x148]
     type: int
+
   PlayerMaxMP:
     base: PlayerStatsComponent
     offsets: [0x150]
     type: int
+
   PlayerGravity:
     base: PlayerTransformComponent
     offsets: [0x1D3]
@@ -63,6 +69,16 @@ pointers:
   LastGrace:
     base: GameMan
     offsets: [0xB30]
+    type: int
+    
+  InCutscene:
+    base: EventFlagMan
+    offsets: [0x28,0x113]
+    type: byte
+
+  PlayerAnimation:
+    base: LocalPlayer
+    offsets: [0x190, 0x80, 0x90]
     type: int
 
 # Teleport-specific pointers, mirroring the Cheat Engine table logic.
