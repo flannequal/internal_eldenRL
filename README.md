@@ -105,6 +105,18 @@ This multi-step process allows the program to reliably find game data even thoug
 - Memory addresses and AOB patterns in `config/addresses.yaml` must match your game version (v16 when made)
 - Using a new game save is recommended for safety
 
+TPData teleport tools
+
+exact memory-flow Hexinton CE table used:
+
+Read the games global coordinate floats (the same values CE’s “copypaste current coords” reads from NetManImp).
+
+Pack those floats (plus the bonfire ID word) into a 32-byte TPData blob (exact CE layout).
+
+Write that TPData blob into the game process (VirtualAllocEx + WriteProcessMemory) — exactly like CE’s alloc(TPData,32,"eldenring.exe") + readmem(...)->TPData.
+
+Invoke the teleport logic by reading floats back from TPData and performing the same math CE’s InvokeTP does, then writing the resulting player-local floats into the player pointers (with gravity toggled while it writes).
+
 
 ## Contributing
 - You can contribute by extending the YAML configuration files with new addresses or arena data.

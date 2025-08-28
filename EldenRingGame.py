@@ -252,67 +252,6 @@ class EldenRingGame:
 
         logging.info("Safe teleport complete.")
 
-    def warp(self, bonfire_name_or_id: Any) -> bool:
-        if not self.mem.attached:
-            logging.error("Cannot warp, MemoryManager not attached to game.")
-            return False
-
-        target_bonfire_id = None
-        if isinstance(bonfire_name_or_id, int):
-            target_bonfire_id = bonfire_name_or_id
-        elif isinstance(bonfire_name_or_id, str):
-            target_bonfire_id = self._bonfires_db.get(bonfire_name_or_id)
-
-        if target_bonfire_id is None:
-            logging.error(f"Bonfire '{bonfire_name_or_id}' not found.")
-            return False
-
-        logging.info(f"Initiating warp to bonfire ID: {target_bonfire_id}")
-
-        # --- Step 1: Get all necessary addresses using our reliable resolver ---
-        lua_warp_addr = self.mem.resolve_address("WarpFunction")
-        if not lua_warp_addr:
-            logging.error("WarpFunction address not resolved.")
-            return False
-
-        cs_lua_event_manager_addr = self.mem.resolve_address("CSLuaEventManager")
-        if not cs_lua_event_manager_addr:
-            logging.error("CSLuaEventManager address not resolved.")
-            return False
-
-
-        # --- START OF FINAL FIX: Retry Loop ---
-        max_retries = 10
-        retry_delay = 0.2  # Wait 200ms between tries
-        script_imitation_ptr = None
-        proxy_ptr = None
-
-        logging.info(f"Attempting to read Lua event pointers from base: {hex(cs_lua_event_manager_addr)}")
-
-        script_imitation_ptr = self.mem.read_pointer(cs_lua_event_manager_addr + 0x18)
-        proxy_ptr = self.mem.read_pointer(cs_lua_event_manager_addr + 0x08)
-
-        warp_id_arg = target_bonfire_id - 1000
-
-        shellcode = (
-            bytes([0x48, 0x83, 0xEC, 0x48])              # sub rsp, 48h (Allocate stack space)
-            + bytes([0x48, 0xB9])                        # mov rcx, ...
-            + struct.pack("<Q", script_imitation_ptr)   # ... Arg 1
-            + bytes([0x48, 0xBA])                        # mov rdx, ...
-            + struct.pack("<Q", proxy_ptr)               # ... Arg 2
-            + bytes([0x41, 0xB8])                        # mov r8d, ... (41 B8 is mov r8d, imm32)
-            + struct.pack("<i", warp_id_arg)             # ... Arg 3 (as a 32-bit signed int)
-            + bytes([0x48, 0xB8])                        # mov rax, ...
-            + struct.pack("<Q", lua_warp_addr)           # ... the function to call
-            + bytes([0xFF, 0xD0])                        # call rax
-            + bytes([0x48, 0x83, 0xC4, 0x48])            # add rsp, 48h (Cleanup stack)
-            + bytes([0xC3])                              # ret
-        )
-
-        logging.info( f"Injecting and executing CORRECT warp shellcode to call LuaWarp at {hex(lua_warp_addr)}")
-        return self.mem.execute_shellcode(shellcode)
-            
-
     def reset_arena(self, arena_id: int, **kwargs) -> None:
         if not self.mem.attached:
             logging.error( "Cannot reset arena, MemoryManager not attached to game.")
