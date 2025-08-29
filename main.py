@@ -36,7 +36,6 @@ if __name__ == '__main__':
             "DISABLE_INPUT": False,
             "LOG_MEMORY_DEBUG": True,
             "MEMORY_DEBUG_INTERVAL": 1,
-            "DEBUG_SAVE_VISION_FEED": True,
         }
     CREATE_NEW_MODEL = True
     # Create a new model or resume training for an existing model

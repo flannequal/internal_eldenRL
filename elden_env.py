@@ -2,7 +2,6 @@ import logging
 import time
 import os
 import yaml
-import math
 from typing import Any, Dict, Optional, Tuple
 
 import gymnasium as gym
@@ -13,7 +12,6 @@ import cv2
 
 from elden_game import EldenRingGame
 from input_controller import InputController
-from reward_calculator import RewardCalculator
 
 class EldenEnv(gym.Env):
     """
@@ -36,15 +34,13 @@ class EldenEnv(gym.Env):
             self.input_controller = InputController(actions_config_path=actions_path)
             self.sct = mss.mss()
 
-            reward_schema = env_config.get("REWARD_SCHEMA", "standard")
-            self.reward_calculator = RewardCalculator(reward_schema)
-
-        except (RuntimeError, ValueError) as e:
+        except RuntimeError as e:
             logging.error(f"Could not initialize Elden Ring environment: {e}")
             self.game = None
             return
             
         self.arena_id = env_config.get("BOSS", 1)
+        self.training_mode = env_config.get("TRAINING_MODE", "standard")
         self.arena_config = self.game.arenas.get(self.arena_id)
         if not self.arena_config:
             raise ValueError(f"Arena ID {self.arena_id} not found in arenas.yaml")
@@ -54,39 +50,42 @@ class EldenEnv(gym.Env):
             num_actions = len(self.actions_config)
         self.action_space = spaces.Discrete(num_actions)
 
+        # --- Hybrid Observation Space (Vision + Data) ---
+        self.vision_shape = (180, 320, 3)
         self.observation_space = spaces.Dict({
-            "vision": spaces.Box(low=0, high=255, shape=(90, 160, 3), dtype=np.uint8),
-            "data": spaces.Box(low=0.0, high=1.0, shape=(2,), dtype=np.float32)
+            "vision": spaces.Box(low=0, high=255, shape=self.vision_shape, dtype=np.uint8),
+            "data": spaces.Box(low=0.0, high=1.0, shape=(2,), dtype=np.float32) # [player_hp, boss_hp]
         })
         
         self.last_player_hp = 1.0
         self.last_boss_hp = 1.0
         self.last_distance = 0.0
-        self.last_action_name = "N/A"
-        self.last_observation = None
 
     def _get_observation(self) -> Optional[Dict[str, np.ndarray]]:
         if not self.game: return None
 
+        # --- Capture Vision ---
         monitor = self.sct.monitors[1]
         sct_img = self.sct.grab(monitor)
         frame = np.array(sct_img)
-        vision_obs = cv2.resize(frame, (160, 90))
+
+        # Resize for the model's observation space
+        height, width, _ = self.vision_shape
+        vision_obs = cv2.resize(frame, (width, height))
         vision_obs = cv2.cvtColor(vision_obs, cv2.COLOR_BGRA2RGB)
 
+        # --- Capture Data ---
         player_stats = self.game.get_player_stats()
         boss_stats = self.game.get_boss_hp()
         
-        if not player_stats or not boss_stats:
-            return None
+        if not player_stats or not boss_stats: return None
 
         player_hp_norm = player_stats.get('hp', 0) / max(1, player_stats.get('max_hp', 1))
         boss_hp_norm = boss_stats[0] / max(1, boss_stats[1])
         
         data_obs = np.array([player_hp_norm, boss_hp_norm], dtype=np.float32)
 
-        self.last_observation = {"vision": vision_obs, "data": data_obs}
-        return self.last_observation
+        return {"vision": vision_obs, "data": data_obs}
 
     def reset(self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None) -> Tuple[Any, Dict[str, Any]]:
         super().reset(seed=seed)
@@ -95,55 +94,39 @@ class EldenEnv(gym.Env):
 
         logging.info("Resetting environment...")
 
-        player_stats = self.game.get_player_stats()
-        if player_stats and player_stats.get('hp', 0) <= 0:
-            logging.info("Player is dead, performing instant reset.")
-            self.game.set_invisibility(True)
-            self.game.set_player_hp(player_stats.get('max_hp', 1000))
-
-            boss_stats = self.game.get_boss_hp()
-            if boss_stats: self.game.set_boss_hp(boss_stats[1])
-
-            self.game.set_player_animation_override(0)
-            time.sleep(0.1)
-
-        if not self.game.teleport_to_arena(self.arena_id):
-            return self.observation_space.sample(), {"error": "teleport_failed"}
-        time.sleep(0.2)
-
-        angle_config = self.arena_config.get("player_spawn_angle", {})
-        cos_z = angle_config.get('cos_z', 1.0)
-        sin_z = angle_config.get('sin_z', 0.0)
-        self.game.set_player_angle(cos_z, sin_z)
-        time.sleep(0.1)
-
-        boss_param_id = int(str(self.arena_config.get("boss", {}).get("char_param_id", "")).split(':')[0])
+        # Find the boss entity first, as we need it for HP checks and teleport
+        boss_param_id_str = str(self.arena_config.get("boss", {}).get("char_param_id", ""))
+        boss_param_id = int(boss_param_id_str.split(':')[0])
         if not self.game.find_boss_entity(boss_param_id):
-            return self.observation_space.sample(), {"error": "boss_not_found"}
+             return self.observation_space.sample(), {"error": "boss_not_found"}
 
-        player_pos = self.game.get_player_position()
-        if player_pos:
-            new_boss_x = player_pos[0] - (sin_z * 5)
-            new_boss_y = player_pos[1]
-            new_boss_z = player_pos[2] + (cos_z * 5)
-            self.game.set_boss_position(new_boss_x, new_boss_y, new_boss_z)
+        # Instant reset logic for player
+        player_stats = self.game.get_player_stats()
+        if player_stats and player_stats['hp'] <= 0:
+            logging.info("Player is dead. Performing instant reset...")
+            # Restore HP and Stamina, etc. here if needed in future
+            pass # For now, teleport handles repositioning
 
-        time.sleep(0.3)
+        # Teleport player and boss to their designated global coordinates
+        self.game.teleport_to_arena(self.arena_id)
+
+        boss_spawn = self.arena_config.get("boss_spawn")
+        if boss_spawn:
+            self.game.teleport_boss(boss_spawn['x'], boss_spawn['y'], boss_spawn['z'])
+        else:
+            logging.warning(f"No 'boss_spawn' coordinates found in config for arena {self.arena_id}.")
+
+        time.sleep(2.0) # Wait for teleports to complete
 
         logging.info("Attempting to lock on to boss...")
         self.input_controller.lock_on()
         time.sleep(0.5)
 
-        self.game.set_player_animation_override(-1)
-        self.game.set_invisibility(False)
-
         self.episode_start_time = time.time()
         initial_obs = self._get_observation()
-        if initial_obs is None:
-            return self.observation_space.sample(), {"error": "initial_obs_failed"}
-
-        self.last_player_hp = initial_obs["data"][0]
-        self.last_boss_hp = initial_obs["data"][1]
+        if initial_obs is not None:
+            self.last_player_hp = initial_obs["data"][0]
+            self.last_boss_hp = initial_obs["data"][1]
         
         return initial_obs, {}
 
@@ -152,31 +135,51 @@ class EldenEnv(gym.Env):
             return self.observation_space.sample(), 0.0, True, False, {}
 
         self.total_steps += 1
-        self.last_action_name = self.input_controller.take_action(action)
+        action_name = self.actions_config.get(action, {}).get("name", "UNKNOWN")
+
+        self.input_controller.take_action(action)
         time.sleep(0.1)
 
         obs = self._get_observation()
         if obs is None:
-            return self.observation_space.sample(), 0.0, False, False, {"error": "obs_failed"}
+            return self.observation_space.sample(), 0.0, False, False, {}
 
-        player_hp_norm, boss_hp_norm = obs["data"]
+        player_hp_norm = obs["data"][0]
+        boss_hp_norm = obs["data"][1]
         distance = self.game.get_distance_to_boss() or self.last_distance
         
-        terminated = (player_hp_norm <= 0.01)
-        won = (boss_hp_norm <= 0.01)
-        if won: terminated = True
+        # --- Continuous Reward Calculation ---
+        reward_breakdown = {
+            "boss_damage": (self.last_boss_hp - boss_hp_norm) * 150.0,
+            "hp_penalty": (self.last_player_hp - player_hp_norm) * 100.0,
+            "distance": 0.0,
+            "time_alive": 0.0,
+            "win_bonus": 0.0,
+            "lose_penalty": 0.0
+        }
 
-        time_alive = time.time() - self.episode_start_time
-
-        total_reward, reward_breakdown = self.reward_calculator.calculate_reward(
-            self.last_player_hp, player_hp_norm,
-            self.last_boss_hp, boss_hp_norm,
-            distance, time_alive, terminated, won
-        )
+        if self.training_mode == 'aggressive':
+            reward_breakdown["distance"] = -0.66 * min(distance, 15) + 8
+        elif self.training_mode == 'defensive':
+            reward_breakdown["distance"] = 0.5 * min(distance, 20) - 8
 
         self.last_player_hp = player_hp_norm
         self.last_boss_hp = boss_hp_norm
         self.last_distance = distance
+
+        terminated = False
+        if player_hp_norm <= 0.01:
+            reward_breakdown["lose_penalty"] = -100.0
+            terminated = True
+        if boss_hp_norm <= 0.01:
+            reward_breakdown["win_bonus"] = 200.0
+            terminated = True
+
+        if terminated:
+            time_alive = time.time() - self.episode_start_time
+            reward_breakdown["time_alive"] = max(0, time_alive * 0.1)
+
+        total_reward = sum(reward_breakdown.values())
         self.last_info = {"reward_breakdown": reward_breakdown}
 
         return obs, total_reward, terminated, False, self.last_info

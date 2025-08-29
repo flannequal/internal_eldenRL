@@ -97,10 +97,7 @@ class EldenRingGame:
         return None
 
     def get_boss_position(self) -> Optional[Tuple[float, float, float]]:
-        """
-        Returns the boss's current (X, Y, Z) coordinates.
-        Y is the vertical axis.
-        """
+        """Returns the boss's current X, Z, Y coordinates."""
         if not self.boss_entity_addr:
             return None
             
@@ -111,34 +108,14 @@ class EldenRingGame:
             if not transform_ptr: return None
 
             x = self.mem.read_float(transform_ptr + 0x70)
-            y = self.mem.read_float(transform_ptr + 0x74)
-            z = self.mem.read_float(transform_ptr + 0x78)
+            z = self.mem.read_float(transform_ptr + 0x74)
+            y = self.mem.read_float(transform_ptr + 0x78)
 
-            if x is not None and y is not None and z is not None:
-                return x, y, z
+            if x is not None and z is not None and y is not None:
+                return x, z, y
         except Exception:
             return None
         return None
-
-    def set_boss_position(self, x: float, y: float, z: float):
-        """
-        Sets the boss's current (X, Y, Z) coordinates.
-        Y is the vertical axis.
-        """
-        if not self.boss_entity_addr:
-            return
-
-        try:
-            comp_ptr = self.mem.read_longlong(self.boss_entity_addr + 0x190)
-            if not comp_ptr: return
-            transform_ptr = self.mem.read_longlong(comp_ptr + 0x68)
-            if not transform_ptr: return
-
-            self.mem.write_float(transform_ptr + 0x70, x)
-            self.mem.write_float(transform_ptr + 0x74, y)
-            self.mem.write_float(transform_ptr + 0x78, z)
-        except Exception as e:
-            logging.error(f"Failed to set boss position: {e}")
 
     def get_distance_to_boss(self) -> Optional[float]:
         """Calculates the Euclidean distance between the player and the boss."""
@@ -152,24 +129,6 @@ class EldenRingGame:
         """Checks if the game is currently in a cutscene or loading screen."""
         _, value = self.mem.read_pointer("InCutscene")
         return value == 1
-
-    def set_invisibility(self, enabled: bool):
-        """
-        Sets the player's invisibility state via ChrDbgFlags.
-        This assumes bit 0x400 controls invisibility.
-        """
-        INVISIBILITY_FLAG = 0x400
-        current_flags = self.mem.read_static_var("ChrDbgFlags")
-        if current_flags is None:
-            logging.error("Could not read ChrDbgFlags to set invisibility.")
-            return
-
-        if enabled:
-            new_flags = current_flags | INVISIBILITY_FLAG
-        else:
-            new_flags = current_flags & ~INVISIBILITY_FLAG
-
-        self.mem.write_static_var("ChrDbgFlags", new_flags)
 
     def get_player_animation(self) -> Optional[int]:
         """Returns the player's current animation ID."""
@@ -185,52 +144,14 @@ class EldenRingGame:
             stats['hp'], stats['max_hp'] = hp, max_hp
         return stats if stats else None
 
-    def set_player_hp(self, value: int):
-        """Sets the player's current HP."""
-        self.mem.write_pointer("PlayerHP", value)
-
-    def set_boss_hp(self, value: int):
-        """Sets the boss's current HP."""
-        if not self.boss_entity_addr:
-            return
-
-        try:
-            comp_ptr = self.mem.read_longlong(self.boss_entity_addr + 0x190)
-            if not comp_ptr: return
-            stats_ptr = self.mem.read_longlong(comp_ptr + 0x0)
-            if not stats_ptr: return
-
-            self.mem.write_int(stats_ptr + 0x138, value)
-        except Exception as e:
-            logging.error(f"Failed to set boss HP: {e}")
-
-    def set_player_animation(self, value: int):
-        """Sets the player's current animation ID."""
-        self.mem.write_pointer("PlayerAnimation", value)
-
-    def set_player_animation_override(self, value: int):
-        """
-        Overrides the player's animation.
-        -1 to disable override, 0 for idle.
-        """
-        self.mem.write_pointer("PlayerAnimationOverride", value)
-
     def get_player_position(self) -> Optional[Tuple[float, float, float]]:
-        """
-        Returns the player's current (X, Y, Z) coordinates.
-        Y is the vertical axis.
-        """
+        """Returns the player's current X, Z, Y coordinates."""
         _, x = self.mem.read_pointer("xPlayer")
-        _, y = self.mem.read_pointer("yPlayer")
         _, z = self.mem.read_pointer("zPlayer")
-        if x is not None and y is not None and z is not None:
-            return x, y, z
+        _, y = self.mem.read_pointer("yPlayer")
+        if x is not None and z is not None and y is not None:
+            return x, z, y
         return None
-
-    def set_player_angle(self, cos_z: float, sin_z: float):
-        """Sets the player's viewing angle (Z-axis azimuth)."""
-        self.mem.write_pointer("PlayerAngleCosZ", cos_z)
-        self.mem.write_pointer("PlayerAngleSinZ", sin_z)
 
     def teleport_to_arena(self, arena_id: int) -> bool:
         """Teleports the player to the spawn point of a specific arena."""
@@ -244,18 +165,22 @@ class EldenRingGame:
             logging.error(f"Arena '{arena_id}' has no player_spawn coordinates defined.")
             return False
             
-        # Use the corrected (X, Y, Z) coordinate system
-        x = spawn_coords.get("x")
-        y = spawn_coords.get("y")
-        z = spawn_coords.get("z")
-
+        x, y, z = spawn_coords.get("x"), spawn_coords.get("y"), spawn_coords.get("z")
         if x is None or y is None or z is None:
             logging.error(f"Arena '{arena_id}' has incomplete player_spawn coordinates.")
             return False
             
-        logging.info(f"Teleporting to arena '{arena.get('name', arena_id)}'...")
-        # This assumes the teleport tool also uses a standard X, Y, Z system.
+        logging.info(f"Teleporting player to arena '{arena.get('name', arena_id)}'...")
         return self.teleporter.teleport_to_coords(x, y, z)
+
+    def teleport_boss(self, x: float, y: float, z: float) -> bool:
+        """Teleports the currently tracked boss to a set of global coordinates."""
+        if not self.boss_entity_addr:
+            logging.error("Cannot teleport boss, no boss entity is being tracked.")
+            return False
+
+        logging.info(f"Teleporting boss to (X:{x:.2f}, Y:{y:.2f}, Z:{z:.2f})...")
+        return self.teleporter.teleport_to_coords(x, y, z, entity_addr=self.boss_entity_addr)
 
     def close(self):
         logging.info("EldenRingGame API shutting down.")
