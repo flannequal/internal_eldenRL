@@ -17,7 +17,8 @@ class RewardCalculator:
         # State for time-sensitive rewards
         self.last_dodge_time = 0
         self.last_boss_hit_time = 0
-        self.time_of_last_attack = time.time() # Initialize to current time
+        self.time_of_last_attack = time.time()
+        self.time_of_last_damage = 0 # Initialize to 0 (the distant past)
 
         logging.info(f"RewardCalculator initialized with schema: '{schema_name}'")
 
@@ -44,13 +45,16 @@ class RewardCalculator:
         reward_breakdown = {}
         current_time = time.time()
 
-        # --- Standard Rewards ---
+        # --- Damage and HP Changes ---
         boss_hp_diff = last_boss_hp - boss_hp
         reward_breakdown['boss_damage'] = boss_hp_diff * self.schema.get('boss_damage_multiplier', 0)
 
         player_hp_diff = last_player_hp - player_hp
-        reward_breakdown['hp_penalty'] = -player_hp_diff * self.schema.get('player_damage_penalty', 0)
+        if player_hp_diff > 0: # Player took damage
+            reward_breakdown['hp_penalty'] = -player_hp_diff * self.schema.get('player_damage_penalty', 0)
+            self.time_of_last_damage = current_time
 
+        # --- Distance Reward ---
         if self.schema.get('enable_distance_reward', False):
             reward_breakdown['distance'] = self._calculate_distance_reward(distance)
 
@@ -62,21 +66,24 @@ class RewardCalculator:
         if time_penalty != 0:
             reward_breakdown['time_since_attack'] = time_penalty
 
-
         # --- Action-specific Rewards ---
         if action_name == 'light_attack':
-            # Only reward attack attempts if within a certain distance
             threshold = self.schema.get('attack_distance_threshold')
             if threshold is None or distance <= threshold:
                 reward_breakdown['attack_attempt'] = self.schema.get('attack_attempt_reward', 0)
-
             self.time_of_last_attack = current_time
 
         if action_name == 'dodge':
-            cooldown = self.schema.get('dodge_cooldown', 1.5)
-            if current_time - self.last_dodge_time > cooldown:
-                reward_breakdown['dodge'] = self.schema.get('dodge_reward', 0)
-                self.last_dodge_time = current_time
+            # Reactive dodge reward
+            dodge_window = self.schema.get('reactive_dodge_window')
+            if dodge_window and (current_time - self.time_of_last_damage < dodge_window):
+                reward_breakdown['reactive_dodge'] = self.schema.get('reactive_dodge_reward', 0)
+            # Standard dodge reward
+            else:
+                cooldown = self.schema.get('dodge_cooldown', 1.5)
+                if current_time - self.last_dodge_time > cooldown:
+                    reward_breakdown['dodge'] = self.schema.get('dodge_reward', 0)
+            self.last_dodge_time = current_time
 
         if player_hp > last_player_hp: # Player healed
             threshold = self.schema.get('heal_health_threshold', 0.6)
@@ -86,7 +93,7 @@ class RewardCalculator:
                 reward_breakdown['heal_penalty'] = self.schema.get('unnecessary_heal_penalty', 0)
 
         # --- Combo Rewards ---
-        if boss_hp_diff > 0: # A hit landed on the boss
+        if boss_hp_diff > 0:
             window = self.schema.get('successive_hits_time_window', 2.5)
             if current_time - self.last_boss_hit_time < window:
                 reward_breakdown['combo'] = self.schema.get('successive_hits_reward', 0)
@@ -98,10 +105,8 @@ class RewardCalculator:
                 reward_breakdown['win_bonus'] = self.schema.get('win_bonus', 0)
             else:
                 reward_breakdown['lose_penalty'] = self.schema.get('lose_penalty', 0)
-
             reward_breakdown['total_time_alive'] = time_alive * self.schema.get('time_alive_multiplier', 0)
 
-        # Filter out zero values for clarity
         final_rewards = {k: v for k, v in reward_breakdown.items() if v != 0}
         total_reward = sum(final_rewards.values())
 

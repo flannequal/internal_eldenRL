@@ -75,9 +75,11 @@ schemas:
     # Action-specific rewards
     attack_attempt_reward: 0.05   # Reward for trying to attack
     attack_distance_threshold: 4.0  # Max distance in meters to get the attack attempt reward
-    dodge_reward: 0.0
+    dodge_reward: 0.0               # Base dodge reward is off, we only want reactive dodges
     dodge_cooldown: 1.0
-    heal_reward: 3.0
+    reactive_dodge_reward: 15.0     # Large reward for dodging shortly after being hit
+    reactive_dodge_window: 1.5      # Time in seconds after getting hit to perform a reactive dodge
+    heal_reward: 1.0                # Lowered reward for healing
     heal_health_threshold: 0.5
     unnecessary_heal_penalty: -3.0
 

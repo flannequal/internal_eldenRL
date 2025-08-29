@@ -1,30 +1,24 @@
+import os
 import cv2
 from rich.console import Console
 from rich.table import Table
-from rich.live import Live
 
 class LiveStatsDisplay:
     """
-    A class to generate and print live training statistics to the console using rich.Live.
+    A class to generate and print live training statistics to the console.
+    This version uses a simple clear screen command for frequent updates.
     """
     def __init__(self, env):
         self.console = Console()
-        self.live = Live(console=self.console, screen=False, auto_refresh=False)
-        # Assuming env.actions_config is a dict like {0: {'name': 'action1'}, 1: {'name': 'action2'}}
+        # Get action names from the environment for the table
         self.action_names = [v['name'] for v in env.actions_config.values()]
 
-    def start(self):
-        """Starts the live display."""
-        self.live.start()
-
-    def stop(self):
-        """Stops the live display."""
-        self.live.stop()
-
-    def generate_table(self, env, fps: float, save_vision: bool) -> Table:
+    def print_update(self, env, fps: float, save_vision: bool):
         """
-        Generates the table with all the stats.
+        Clears the console and prints an updated table of stats.
         """
+        os.system('cls' if os.name == 'nt' else 'clear')
+
         action_name = env.last_action_name
         last_info = env.last_info
         obs = env.last_observation
@@ -33,7 +27,8 @@ class LiveStatsDisplay:
 
         if not obs:
             table.add_row("[bold red]No observation data available yet.[/bold red]")
-            return table
+            self.console.print(table)
+            return
 
         table.add_column("Metric", justify="right", style="cyan", no_wrap=True)
         table.add_column("Value", style="magenta")
@@ -67,15 +62,8 @@ class LiveStatsDisplay:
         if hasattr(env, 'action_counts'):
             table.add_section()
             table.add_row("[bold]Action Counts (Episode)[/bold]", "")
-            for action_name in self.action_names:
-                count = env.action_counts.get(action_name, 0)
-                table.add_row(action_name, str(count))
+            for act_name in self.action_names:
+                count = env.action_counts.get(act_name, 0)
+                table.add_row(act_name, str(count))
 
-        return table
-
-    def print_update(self, env, fps: float, save_vision: bool):
-        """
-        Updates the live display with a new table.
-        """
-        table = self.generate_table(env, fps, save_vision)
-        self.live.update(table, refresh=True)
+        self.console.print(table)

@@ -29,90 +29,30 @@ class EldenRingGame:
         self.boss_entity_addr: Optional[int] = None
 
         # Apply game patches on initialization
-        self.set_unlimited_flasks()
+        self.set_unlimited_consumables(True)
 
         logging.info("EldenRingGame API initialized.")
 
-    def _get_param_base(self) -> Optional[int]:
-        """Finds the base address of the PARAM table using AOB scan."""
-        pattern = rb'\x48\x8B\x0D....\x48\x85\xC9\x0F\x84....\x45\x33\xC0\xBA\x8E'
-        found_addr = self.mem.pattern_scan_module(pattern, "eldenring.exe")
+    def set_unlimited_consumables(self, enabled: bool):
+        """
+        Patches the game memory to grant unlimited consumables using CHR_DBG_FLAGS.
+        This is based on the user-provided script: `CHR_DBG_FLAGS+3: db 01`.
+        """
+        logging.info(f"Setting unlimited consumables to: {enabled}")
+        chr_dbg_flags_addr = self.mem._get_static_var_address("ChrDbgFlags")
 
-        if not found_addr:
-            logging.error("Could not find ParamBase address using AOB scan.")
-            return None
-
-        # Replicate the logic: foundaddr + 7 + readInteger(foundaddr + 3, true)
-        offset = self.mem.read_int(found_addr + 3)
-        if offset is None: return None
-
-        return self.mem.read_longlong(found_addr + 7 + offset)
-
-    def _get_param_table_base(self, param_base: int, table_index: int) -> Optional[int]:
-        """Gets the base address of a specific parameter table (e.g., Goods)."""
-        try:
-            hdr = self.mem.read_longlong(param_base + table_index * 72 + 0x88)
-            if not hdr: return None
-
-            p = self.mem.read_longlong(hdr + 0x80)
-            if not p: return None
-
-            return self.mem.read_longlong(p + 0x80)
-        except Exception as e:
-            logging.error(f"Error getting param table base for index {table_index}: {e}")
-            return None
-
-    def _get_address_from_param_id(self, table_base: int, item_id: int) -> Optional[int]:
-        """Finds the memory address for a specific item ID within a param table."""
-        try:
-            num_entries = self.mem.read_byte(table_base + 10)
-            if num_entries is None: return None
-
-            for i in range(num_entries):
-                entry_offset = table_base + 64 + 24 * i
-                current_id = self.mem.read_int(entry_offset)
-                if current_id == item_id:
-                    addr_offset = self.mem.read_int(entry_offset + 8)
-                    if addr_offset is None: continue
-                    return table_base + addr_offset
-            return None
-        except Exception as e:
-            logging.error(f"Error finding address for param ID {item_id}: {e}")
-            return None
-
-    def set_unlimited_flasks(self):
-        """Patches the game memory to grant unlimited flasks."""
-        logging.info("Attempting to apply unlimited flasks patch...")
-        param_base = self._get_param_base()
-        if not param_base:
-            logging.error("Failed to apply unlimited flasks patch: ParamBase not found.")
+        if not chr_dbg_flags_addr:
+            logging.error("Could not find address for CHR_DBG_FLAGS. Cannot set unlimited consumables.")
             return
 
-        goods_table_base = self._get_param_table_base(param_base, 3) # Index 3 is for Goods
-        if not goods_table_base:
-            logging.error("Failed to apply unlimited flasks patch: GoodsTableBase not found.")
-            return
+        # The address to patch is CHR_DBG_FLAGS + 3
+        address_to_patch = chr_dbg_flags_addr + 3
+        value_to_write = 1 if enabled else 0
 
-        flask_ids = [
-            0x400003E8, # Flask of Crimson Tears
-            0x400003E9, # Flask of Crimson Tears +1
-            0x4000041A, # Flask of Cerulean Tears
-            0x4000041B, # Flask of Cerulean Tears +1
-        ]
-
-        patched_count = 0
-        for flask_id in flask_ids:
-            flask_addr = self._get_address_from_param_id(goods_table_base, flask_id)
-            if flask_addr:
-                # From the Lua script: good:patchBinary(0x48, 0, 7)
-                # This patches the byte at offset 0x48 to 0.
-                if self.mem.write_byte(flask_addr + 0x48, 0):
-                    patched_count += 1
-
-        if patched_count > 0:
-            logging.info(f"Successfully patched {patched_count} flask types for unlimited use.")
+        if self.mem.write_byte(address_to_patch, value_to_write):
+            logging.info(f"Successfully wrote {value_to_write} to {hex(address_to_patch)} for unlimited consumables.")
         else:
-            logging.warning("Could not patch any flask types for unlimited use.")
+            logging.error(f"Failed to write to {hex(address_to_patch)} for unlimited consumables.")
 
     def _load_arenas(self, file_path: str):
         """Loads arena configurations from the YAML file."""
@@ -187,13 +127,18 @@ class EldenRingGame:
         Y is the vertical axis.
         """
         if not self.boss_entity_addr:
+            logging.debug("get_boss_position failed: boss_entity_addr is not set.")
             return None
             
         try:
             comp_ptr = self.mem.read_longlong(self.boss_entity_addr + 0x190)
-            if not comp_ptr: return None
+            if not comp_ptr:
+                logging.debug("get_boss_position failed: comp_ptr is null.")
+                return None
             transform_ptr = self.mem.read_longlong(comp_ptr + 0x68)
-            if not transform_ptr: return None
+            if not transform_ptr:
+                logging.debug("get_boss_position failed: transform_ptr is null.")
+                return None
 
             x = self.mem.read_float(transform_ptr + 0x70)
             y = self.mem.read_float(transform_ptr + 0x74)
@@ -201,7 +146,8 @@ class EldenRingGame:
 
             if x is not None and y is not None and z is not None:
                 return x, y, z
-        except Exception:
+        except Exception as e:
+            logging.error(f"Exception in get_boss_position: {e}")
             return None
         return None
 
@@ -229,9 +175,17 @@ class EldenRingGame:
         """Calculates the Euclidean distance between the player and the boss."""
         player_pos = self.get_player_position()
         boss_pos = self.get_boss_position()
-        if player_pos and boss_pos:
-            return math.sqrt(sum([(a - b) ** 2 for a, b in zip(player_pos, boss_pos)]))
-        return None
+
+        if not player_pos:
+            logging.warning("Could not calculate distance: Player position is unknown.")
+            return None
+        if not boss_pos:
+            logging.warning("Could not calculate distance: Boss position is unknown.")
+            return None
+
+        distance = math.sqrt(sum([(a - b) ** 2 for a, b in zip(player_pos, boss_pos)]))
+        logging.debug(f"Player pos: {player_pos}, Boss pos: {boss_pos}, Distance: {distance}")
+        return distance
 
     def is_in_cutscene(self) -> bool:
         """Checks if the game is currently in a cutscene or loading screen."""
@@ -302,34 +256,44 @@ class EldenRingGame:
 
     def get_player_position(self) -> Optional[Tuple[float, float, float]]:
         """
-        Returns the player's current (X, Y, Z) coordinates by following the
-        same pointer chain as the Npc manager lua script for consistency.
-        Y is the vertical axis.
+        Returns the player's current (X, Y, Z) coordinates. It first tries
+        the pointer chain method from the Lua script for accuracy, and falls
+        back to the simple x/y/z pointers if that fails.
         """
+        # Primary method: Pointer chain from WorldChrMan
         try:
-            world_chr_man = self.mem._get_address_from_config("WorldChrMan")
-            if not world_chr_man: return None
-
-            p = self.mem.read_longlong(world_chr_man)
-            if not p: return None
-
-            # This pointer chain is based on the GetPlayerPosAddr function in Npc manager.lua
-            p = self.mem.read_longlong(p + 0x1E508)
-            if not p: return None
-            p = self.mem.read_longlong(p + 0x190)
-            if not p: return None
-            p = self.mem.read_longlong(p + 0x68)
-            if not p: return None
-
-            x = self.mem.read_float(p + 0x70)
-            y = self.mem.read_float(p + 0x74)
-            z = self.mem.read_float(p + 0x78)
-
-            if x is not None and y is not None and z is not None:
-                return x, y, z
+            world_chr_man_ptr = self.mem._get_address_from_config("WorldChrMan")
+            if world_chr_man_ptr:
+                p = self.mem.read_longlong(world_chr_man_ptr)
+                if p:
+                    p = self.mem.read_longlong(p + 0x1E508)
+                    if p:
+                        p = self.mem.read_longlong(p + 0x190)
+                        if p:
+                            p = self.mem.read_longlong(p + 0x68)
+                            if p:
+                                x = self.mem.read_float(p + 0x70)
+                                y = self.mem.read_float(p + 0x74)
+                                z = self.mem.read_float(p + 0x78)
+                                if x is not None and y is not None and z is not None:
+                                    logging.debug("Player position found via pointer chain.")
+                                    return x, y, z
         except Exception as e:
             logging.error(f"Error getting player position via pointer chain: {e}")
 
+        # Fallback method: Direct pointers
+        logging.warning("Pointer chain method failed. Falling back to direct coordinate pointers.")
+        try:
+            _, x = self.mem.read_pointer("xPlayer")
+            _, y = self.mem.read_pointer("yPlayer")
+            _, z = self.mem.read_pointer("zPlayer")
+            if x is not None and y is not None and z is not None:
+                logging.debug("Player position found via fallback direct pointers.")
+                return x, y, z
+        except Exception as e:
+            logging.error(f"Error getting player position via fallback pointers: {e}")
+
+        logging.error("Failed to get player position using all available methods.")
         return None
 
     def set_player_angle(self, cos_z: float, sin_z: float):
@@ -363,4 +327,5 @@ class EldenRingGame:
         return self.teleporter.teleport_to_coords(x, y, z)
 
     def close(self):
+        self.set_unlimited_consumables(False)
         logging.info("EldenRingGame API shutting down.")
