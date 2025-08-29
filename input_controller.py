@@ -18,7 +18,12 @@ class InputController:
         self.enabled = enabled and (pydirectinput is not None)
         self._load_config(actions_config_path)
         self._movement_keys = {'w', 'a', 's', 'd'}
-        self._mouse_buttons = {'left', 'right', 'middle'} # Simplified to match pydirectinput
+        self._mouse_buttons = {'mouse_left', 'mouse_right', 'middle'}
+        self._mouse_map = {
+            'mouse_left': 'left',
+            'mouse_right': 'right',
+            'middle': 'middle'
+        }
 
     def _load_config(self, actions_config_path: str):
         """
@@ -68,7 +73,9 @@ class InputController:
 
         # REVISED: Check if the key is a mouse button
         if key in self._mouse_buttons:
-            pydirectinput.click(button=key)
+            button_to_press = self._mouse_map.get(key)
+            if button_to_press:
+                pydirectinput.click(button=button_to_press)
         elif key in self._movement_keys:
             # Handle continuous movement keys
             for other_key in self._movement_keys:

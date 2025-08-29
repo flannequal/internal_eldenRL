@@ -130,6 +130,24 @@ class EldenRingGame:
         _, value = self.mem.read_pointer("InCutscene")
         return value == 1
 
+    def set_invisibility(self, enabled: bool):
+        """
+        Sets the player's invisibility state via ChrDbgFlags.
+        This assumes bit 0x400 controls invisibility.
+        """
+        INVISIBILITY_FLAG = 0x400
+        current_flags = self.mem.read_static_var("ChrDbgFlags")
+        if current_flags is None:
+            logging.error("Could not read ChrDbgFlags to set invisibility.")
+            return
+
+        if enabled:
+            new_flags = current_flags | INVISIBILITY_FLAG
+        else:
+            new_flags = current_flags & ~INVISIBILITY_FLAG
+
+        self.mem.write_static_var("ChrDbgFlags", new_flags)
+
     def get_player_animation(self) -> Optional[int]:
         """Returns the player's current animation ID."""
         _, anim_id = self.mem.read_pointer("PlayerAnimation")
@@ -166,6 +184,13 @@ class EldenRingGame:
     def set_player_animation(self, value: int):
         """Sets the player's current animation ID."""
         self.mem.write_pointer("PlayerAnimation", value)
+
+    def set_player_animation_override(self, value: int):
+        """
+        Overrides the player's animation.
+        -1 to disable override, 0 for idle.
+        """
+        self.mem.write_pointer("PlayerAnimationOverride", value)
 
     def get_player_position(self) -> Optional[Tuple[float, float, float]]:
         """Returns the player's current X, Z, Y coordinates."""

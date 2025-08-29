@@ -59,6 +59,7 @@ class EldenEnv(gym.Env):
         self.last_player_hp = 1.0
         self.last_boss_hp = 1.0
         self.last_distance = 0.0
+        self.last_action_name = "N/A"
 
     def _get_observation(self) -> Optional[Dict[str, np.ndarray]]:
         if not self.game: return None
@@ -96,6 +97,9 @@ class EldenEnv(gym.Env):
         if player_stats and player_stats.get('hp', 0) <= 0:
             logging.info("Player is dead, performing instant reset.")
 
+            # Make player invisible to enemies
+            self.game.set_invisibility(True)
+
             # Reset player and boss HP
             self.game.set_player_hp(player_stats.get('max_hp', 1000))
 
@@ -103,9 +107,9 @@ class EldenEnv(gym.Env):
             if boss_stats:
                 self.game.set_boss_hp(boss_stats[1]) # Set to max HP
 
-            # Reset player animation state to idle (assuming 0 is idle)
-            self.game.set_player_animation(0)
-            time.sleep(0.1) # Give the game a moment to process the changes
+            # Override animation to idle to prevent death animation
+            self.game.set_player_animation_override(0)
+            time.sleep(0.1) # Give the game a moment to process the override
 
         if not self.game.teleport_to_arena(self.arena_id):
             return self.observation_space.sample(), {"error": "teleport_failed"}
@@ -120,6 +124,10 @@ class EldenEnv(gym.Env):
         logging.info("Attempting to lock on to boss...")
         self.input_controller.lock_on()
         time.sleep(0.5)
+
+        # Release animation override and invisibility
+        self.game.set_player_animation_override(-1)
+        self.game.set_invisibility(False)
 
         self.episode_start_time = time.time()
         initial_obs = self._get_observation()
@@ -138,7 +146,7 @@ class EldenEnv(gym.Env):
 
         self.total_steps += 1
 
-        self.input_controller.take_action(action)
+        self.last_action_name = self.input_controller.take_action(action)
         time.sleep(0.1)
 
         obs = self._get_observation()

@@ -10,6 +10,13 @@ bases_static:
   LockTgtMan: 0x3D6A208
   NetManImp: 0x3D5AE60
   EventFlagMan: 0x3D68448
+
+# Static variables are single values at a fixed RVA from the module base.
+static_vars:
+  ChrDbgFlags:
+    rva: 0x3D661A0
+    type: int # Bitmask for debug flags
+
 # Pointers are complex addresses that require walking a pointer chain.
 # Each pointer has a 'base' (which must be a name from 'bases_static' or another pointer)
 # and a list of 'offsets'.
@@ -85,6 +92,11 @@ pointers:
     base: LocalPlayer
     offsets: [0x190, 0x18, 0x8]
     type: byte
+
+  PlayerAnimationOverride:
+    base: LocalPlayer
+    offsets: [0x190, 0x58, 0x18]
+    type: int # Usually -1 (off), can be set to an animation ID (e.g., 0 for idle)
 
 # Teleport-specific pointers, mirroring the Cheat Engine table logic.
 teleport:

@@ -6,6 +6,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
 
 from elden_env import EldenEnv
+from live_stats import LiveStatsDisplay
 
 class TensorboardCallback(BaseCallback):
     """
@@ -65,11 +66,20 @@ def train(config: dict):
         print("="*50 + "\n")
         
         callback = TensorboardCallback()
+        display = LiveStatsDisplay()
+
+        # Initial display before training starts
+        display.update(env, env.last_action_name)
+
         while True:
             model.learn(total_timesteps=timesteps_per_iteration,
                         reset_num_timesteps=False, 
                         tb_log_name="PPO",
                         callback=callback)
+
+            # Update the display after each learning cycle
+            display.update(env, env.last_action_name)
+
             model.save(model_path)
             logging.info(f"\nModel updated and saved to {model_path}")
     except KeyboardInterrupt:

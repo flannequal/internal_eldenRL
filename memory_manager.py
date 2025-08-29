@@ -177,6 +177,48 @@ class MemoryManager:
             logging.warning(f"Unsupported value type '{value_type}' for pointer '{name}'.")
             return False
 
+    def _get_static_var_address(self, name: str) -> Optional[int]:
+        """Gets the absolute address of a static variable from its RVA."""
+        var_config = self.config.get("static_vars", {}).get(name)
+        if not var_config:
+            logging.error(f"Static variable '{name}' not found in config.")
+            return None
+        return self.module_base + var_config.get("rva", 0)
+
+    def read_static_var(self, name: str) -> Optional[Any]:
+        """Reads a value from a static variable in the config."""
+        addr = self._get_static_var_address(name)
+        if addr is None:
+            return None
+
+        var_config = self.config.get("static_vars", {}).get(name, {})
+        value_type = var_config.get("type", "bytes")
+
+        if value_type == "int":
+            return self.read_int(addr)
+        elif value_type == "byte":
+            return self.read_byte(addr)
+        else:
+            logging.warning(f"Unsupported value type '{value_type}' for static var '{name}'.")
+            return None
+
+    def write_static_var(self, name: str, value: Any) -> bool:
+        """Writes a value to a static variable in the config."""
+        addr = self._get_static_var_address(name)
+        if addr is None:
+            return False
+
+        var_config = self.config.get("static_vars", {}).get(name, {})
+        value_type = var_config.get("type", "bytes")
+
+        if value_type == "int":
+            return self.write_int(addr, value)
+        elif value_type == "byte":
+            return self.write_byte(addr, value)
+        else:
+            logging.warning(f"Unsupported value type '{value_type}' for static var '{name}'.")
+            return False
+
     def read_teleport_coords(self) -> Optional[Tuple[float, float, float]]:
         """Reads the global X, Z, Y coordinates for teleporting."""
         x_addr = self._get_address_from_config("xGlobal")
