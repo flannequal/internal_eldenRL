@@ -53,7 +53,7 @@ class ComprehensiveCallback(BaseCallback):
             self.last_time = current_time
             self.last_steps = self.num_timesteps
 
-            env = self.training_env.envs[0]
+            env = self.training_env.envs[0].env
             self.display_manager.print_update(env, self.fps, self.save_vision)
             self.last_print_time = current_time
 

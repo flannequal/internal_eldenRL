@@ -29,7 +29,7 @@ class RewardCalculator:
     def calculate_reward(self, last_player_hp: float, player_hp: float,
                          last_boss_hp: float, boss_hp: float,
                          distance: float, time_alive: float,
-                         terminated: bool, won: bool) -> Tuple[float, Dict[str, float]]:
+                         terminated: bool, won: bool) -> tuple[float, Dict[str, float]]:
         """
         Calculates the total reward for a step based on the loaded schema.
         """
