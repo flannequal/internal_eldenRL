@@ -16,4 +16,5 @@ TIMESTEPS_PER_ITERATION: 20000
 #   - "standard": Focuses only on damage dealt and received.
 #   - "aggressive": Rewards the agent for staying close to the boss.
 #   - "defensive": Rewards the agent for maintaining distance.
-TRAINING_MODE: "defensive"
+#   - "hyper-aggressive": Forces the agent to attack and removes survival incentives.
+REWARD_SCHEMA: "hyper-aggressive"

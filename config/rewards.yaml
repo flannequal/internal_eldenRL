@@ -10,23 +10,23 @@ schemas:
     lose_penalty: -100.0
 
     # Time-based rewards
-    time_alive_multiplier: 0.1      # Points per second, awarded at the end
-    step_time_alive_reward: 0.001   # Small reward for each step alive
+    time_alive_multiplier: 0.1
+    step_time_alive_reward: 0.001
 
     # Action-specific rewards
     dodge_reward: 0.02
-    dodge_cooldown: 1.5             # Seconds to wait before rewarding dodge again
+    dodge_cooldown: 1.5
     heal_reward: 5.0
-    heal_health_threshold: 0.6      # Only reward healing if HP is below this threshold
-    unnecessary_heal_penalty: -2.0  # Penalty for healing when above the threshold
+    heal_health_threshold: 0.6
+    unnecessary_heal_penalty: -2.0
 
     # Combo rewards
     successive_hits_reward: 2.0
-    successive_hits_time_window: 2.5 # Seconds between hits to be considered a combo
+    successive_hits_time_window: 2.5
 
     # Distance parameters
     enable_distance_reward: true
-    distance_reward_type: "bell"    # "bell" or "linear"
+    distance_reward_type: "bell"
     optimal_distance: 8.0
     distance_falloff: 5.0
     distance_reward_scale: 5.0
@@ -43,22 +43,49 @@ schemas:
     step_time_alive_reward: 0.0
 
     # Action-specific rewards
-    dodge_reward: 0.01              # Lower dodge reward to encourage attacking
+    dodge_reward: 0.01
     dodge_cooldown: 2.0
     heal_reward: 3.0
     heal_health_threshold: 0.5
     unnecessary_heal_penalty: -3.0
 
     # Combo rewards
-    successive_hits_reward: 5.0     # High reward for combos
+    successive_hits_reward: 5.0
     successive_hits_time_window: 2.0
 
     # Distance parameters
     enable_distance_reward: true
     distance_reward_type: "bell"
-    optimal_distance: 3.0           # Closer for aggressive play
+    optimal_distance: 3.0
     distance_falloff: 3.0
     distance_reward_scale: 8.0
+
+  hyper-aggressive:
+    # Forces agent to attack, removes survival incentives.
+    boss_damage_multiplier: 250.0
+    player_damage_penalty: 150.0
+    win_bonus: 300.0
+    lose_penalty: -100.0
+
+    # Time-based rewards
+    time_alive_multiplier: 0.0
+    step_time_alive_reward: 0.0
+    time_since_attack_penalty: -0.1 # Penalty per second
+
+    # Action-specific rewards
+    attack_attempt_reward: 0.05   # Reward for trying to attack
+    dodge_reward: 0.0
+    dodge_cooldown: 1.0
+    heal_reward: 3.0
+    heal_health_threshold: 0.5
+    unnecessary_heal_penalty: -3.0
+
+    # Combo rewards
+    successive_hits_reward: 10.0  # Very high combo reward
+    successive_hits_time_window: 1.8
+
+    # Distance parameters
+    enable_distance_reward: false # Disabled as requested
 
   defensive:
     # Focus on survival and punishing from a safe distance.
@@ -72,7 +99,7 @@ schemas:
     step_time_alive_reward: 0.002
 
     # Action-specific rewards
-    dodge_reward: 0.05              # Higher reward for dodging
+    dodge_reward: 0.05
     dodge_cooldown: 1.0
     heal_reward: 7.0
     heal_health_threshold: 0.7
@@ -85,6 +112,6 @@ schemas:
     # Distance parameters
     enable_distance_reward: true
     distance_reward_type: "bell"
-    optimal_distance: 12.0          # Further away for defensive play
+    optimal_distance: 12.0
     distance_falloff: 6.0
     distance_reward_scale: 4.0
