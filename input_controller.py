@@ -75,7 +75,11 @@ class InputController:
         if key in self._mouse_buttons:
             button_to_press = self._mouse_map.get(key)
             if button_to_press:
-                pydirectinput.click(button=button_to_press)
+                # A simple click is often too fast for games.
+                # A short press-and-hold is more reliable.
+                pydirectinput.mouseDown(button=button_to_press)
+                time.sleep(0.05) # Hold for 50ms
+                pydirectinput.mouseUp(button=button_to_press)
         elif key in self._movement_keys:
             # Handle continuous movement keys
             for other_key in self._movement_keys:
