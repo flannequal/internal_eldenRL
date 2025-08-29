@@ -144,6 +144,29 @@ class EldenRingGame:
             stats['hp'], stats['max_hp'] = hp, max_hp
         return stats if stats else None
 
+    def set_player_hp(self, value: int):
+        """Sets the player's current HP."""
+        self.mem.write_pointer("PlayerHP", value)
+
+    def set_boss_hp(self, value: int):
+        """Sets the boss's current HP."""
+        if not self.boss_entity_addr:
+            return
+
+        try:
+            comp_ptr = self.mem.read_longlong(self.boss_entity_addr + 0x190)
+            if not comp_ptr: return
+            stats_ptr = self.mem.read_longlong(comp_ptr + 0x0)
+            if not stats_ptr: return
+
+            self.mem.write_int(stats_ptr + 0x138, value)
+        except Exception as e:
+            logging.error(f"Failed to set boss HP: {e}")
+
+    def set_player_animation(self, value: int):
+        """Sets the player's current animation ID."""
+        self.mem.write_pointer("PlayerAnimation", value)
+
     def get_player_position(self) -> Optional[Tuple[float, float, float]]:
         """Returns the player's current X, Z, Y coordinates."""
         _, x = self.mem.read_pointer("xPlayer")

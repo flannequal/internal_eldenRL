@@ -67,7 +67,6 @@ class EldenEnv(gym.Env):
         monitor = self.sct.monitors[1]
         sct_img = self.sct.grab(monitor)
         frame = np.array(sct_img)
-        # Resize for the model (e.g., 160x90)
         vision_obs = cv2.resize(frame, (160, 90))
         vision_obs = cv2.cvtColor(vision_obs, cv2.COLOR_BGRA2RGB)
 
@@ -75,7 +74,8 @@ class EldenEnv(gym.Env):
         player_stats = self.game.get_player_stats()
         boss_stats = self.game.get_boss_hp()
         
-        if not player_stats or not boss_stats: return None
+        if not player_stats or not boss_stats:
+            return None
 
         player_hp_norm = player_stats.get('hp', 0) / max(1, player_stats.get('max_hp', 1))
         boss_hp_norm = boss_stats[0] / max(1, boss_stats[1])
@@ -89,17 +89,28 @@ class EldenEnv(gym.Env):
         if not self.game:
             return self.observation_space.sample(), {}
 
-        logging.info("Resetting... waiting for death state or cutscene to end.")
-        player_hp = self.game.get_player_stats().get('hp', 0)
-        while self.game.is_in_cutscene() or player_hp <= 0:
-            time.sleep(0.5)
-            player_hp = self.game.get_player_stats().get('hp', 0)
-        logging.info("Player is alive. Proceeding with teleport.")
+        logging.info("Resetting environment...")
+
+        # Instant reset logic
+        player_stats = self.game.get_player_stats()
+        if player_stats and player_stats.get('hp', 0) <= 0:
+            logging.info("Player is dead, performing instant reset.")
+
+            # Reset player and boss HP
+            self.game.set_player_hp(player_stats.get('max_hp', 1000))
+
+            boss_stats = self.game.get_boss_hp()
+            if boss_stats:
+                self.game.set_boss_hp(boss_stats[1]) # Set to max HP
+
+            # Reset player animation state to idle (assuming 0 is idle)
+            self.game.set_player_animation(0)
+            time.sleep(0.1) # Give the game a moment to process the changes
 
         if not self.game.teleport_to_arena(self.arena_id):
             return self.observation_space.sample(), {"error": "teleport_failed"}
         
-        time.sleep(2.0)
+        time.sleep(1.0) # Reduced sleep time
         
         boss_param_id_str = str(self.arena_config.get("boss", {}).get("char_param_id", ""))
         boss_param_id = int(boss_param_id_str.split(':')[0])
@@ -112,9 +123,12 @@ class EldenEnv(gym.Env):
 
         self.episode_start_time = time.time()
         initial_obs = self._get_observation()
-        if initial_obs is not None:
-            self.last_player_hp = initial_obs["data"][0]
-            self.last_boss_hp = initial_obs["data"][1]
+        if initial_obs is None:
+            logging.warning("Failed to get initial observation during reset. Returning dummy observation.")
+            return self.observation_space.sample(), {"error": "initial_obs_failed"}
+
+        self.last_player_hp = initial_obs["data"][0]
+        self.last_boss_hp = initial_obs["data"][1]
         
         return initial_obs, {}
 
@@ -123,14 +137,15 @@ class EldenEnv(gym.Env):
             return self.observation_space.sample(), 0.0, True, False, {}
 
         self.total_steps += 1
-        action_name = self.actions_config.get(action, {}).get("name", "UNKNOWN")
 
         self.input_controller.take_action(action)
         time.sleep(0.1)
 
         obs = self._get_observation()
         if obs is None:
-            return self.observation_space.sample(), 0.0, False, False, {}
+            logging.warning("Failed to get observation in step. Returning last known state.")
+            # Return a dummy observation and no-op reward
+            return self.observation_space.sample(), 0.0, False, False, {"error": "obs_failed"}
 
         player_hp_norm = obs["data"][0]
         boss_hp_norm = obs["data"][1]
@@ -146,12 +161,9 @@ class EldenEnv(gym.Env):
             "lose_penalty": 0.0
         }
 
-        # Smooth distance reward
         if self.training_mode == 'aggressive':
-            # Reward is highest at dist=0, lowest at dist=15. Range [-2, 8]
             reward_breakdown["distance"] = -0.66 * min(distance, 15) + 8
         elif self.training_mode == 'defensive':
-            # Reward is highest at dist=20, lowest at dist=0. Range [-8, 2]
             reward_breakdown["distance"] = 0.5 * min(distance, 20) - 8
 
         self.last_player_hp = player_hp_norm
@@ -168,7 +180,7 @@ class EldenEnv(gym.Env):
         
         if terminated:
             time_alive = time.time() - self.episode_start_time
-            reward_breakdown["time_alive"] = max(0, time_alive * 0.1) # 0.1 points per second survived
+            reward_breakdown["time_alive"] = max(0, time_alive * 0.1)
 
         total_reward = sum(reward_breakdown.values())
         self.last_info = {"reward_breakdown": reward_breakdown}

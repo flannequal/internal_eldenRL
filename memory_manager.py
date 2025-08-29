@@ -146,6 +146,8 @@ class MemoryManager:
             return addr, self.read_float(addr)
         elif value_type == "longlong":
             return addr, self.read_longlong(addr)
+        elif value_type == "byte":
+            return addr, self.read_byte(addr)
         elif value_type == "bytes":
             return addr, self.read_bytes(addr, length)
         else:
@@ -167,6 +169,8 @@ class MemoryManager:
             return self.write_float(addr, value)
         elif value_type == "longlong":
             return self.write_longlong(addr, value)
+        elif value_type == "byte":
+            return self.write_byte(addr, value)
         elif value_type == "bytes":
             return self.write_bytes(addr, value)
         else:
@@ -212,6 +216,9 @@ class MemoryManager:
     def read_byte(self, address: int) -> Optional[int]:
         data = self.read_bytes(address, 1)
         return int.from_bytes(data, 'little') if data else None
+
+    def write_byte(self, address: int, value: int) -> bool:
+        return self.write_bytes(address, value.to_bytes(1, 'little'))
 
     def read_int(self, address: int) -> Optional[int]:
         data = self.read_bytes(address, 4)

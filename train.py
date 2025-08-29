@@ -45,16 +45,16 @@ def train(config: dict):
 
     # --- Use MultiInputPolicy for vision + data ---
     if os.path.exists(model_path):
-        logging.info(f"Loading existing model from {model_path}...")
-        model = PPO.load(model_path, env=env)
-    else:
-        logging.info("Creating a new PPO model with MultiInputPolicy...")
-        model = PPO('MultiInputPolicy',
-                    env,
-                    tensorboard_log=logdir,
-                    n_steps=2048,
-                    verbose=1,
-                    device='cuda')
+        logging.info(f"Found existing model at {model_path}. Deleting to ensure MultiInputPolicy is used.")
+        os.remove(model_path)
+
+    logging.info("Creating a new PPO model with MultiInputPolicy...")
+    model = PPO('MultiInputPolicy',
+                env,
+                tensorboard_log=logdir,
+                n_steps=2048,
+                verbose=1,
+                device='cuda')
 
     timesteps_per_iteration = config.get("TIMESTEPS_PER_ITERATION", 10000)
     try:

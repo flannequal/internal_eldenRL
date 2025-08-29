@@ -81,6 +81,11 @@ pointers:
     offsets: [0x190, 0x80, 0x90]
     type: int
 
+  PlayerAnimationState:
+    base: LocalPlayer
+    offsets: [0x190, 0x18, 0x8]
+    type: byte
+
 # Teleport-specific pointers, mirroring the Cheat Engine table logic.
 teleport:
   # Player's local coordinates (what we write to)
