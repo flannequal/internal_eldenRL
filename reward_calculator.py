@@ -65,7 +65,11 @@ class RewardCalculator:
 
         # --- Action-specific Rewards ---
         if action_name == 'light_attack':
-            reward_breakdown['attack_attempt'] = self.schema.get('attack_attempt_reward', 0)
+            # Only reward attack attempts if within a certain distance
+            threshold = self.schema.get('attack_distance_threshold')
+            if threshold is None or distance <= threshold:
+                reward_breakdown['attack_attempt'] = self.schema.get('attack_attempt_reward', 0)
+
             self.time_of_last_attack = current_time
 
         if action_name == 'dodge':

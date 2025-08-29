@@ -32,17 +32,28 @@ def test_hyper_aggressive_schema():
     print("\n--- Testing 'hyper-aggressive' schema ---")
     calculator = RewardCalculator(schema_name='hyper-aggressive')
 
-    print("\n[Hyper-Aggressive] Test Case 1: Attack attempt reward")
+    print("\n[Hyper-Aggressive] Test Case 1: Attack attempt reward (close enough)")
     total_reward, breakdown = calculator.calculate_reward(
         last_player_hp=0.9, player_hp=0.9,
         last_boss_hp=0.8, boss_hp=0.8,
-        distance=8.0, time_alive=10.0,
+        distance=3.0, time_alive=10.0, # Within threshold
         terminated=False, won=False, action_name='light_attack'
     )
     print(f"Reward: {total_reward:.4f}, Breakdown: {breakdown}")
-    assert 'attack_attempt' in breakdown, "Attack attempt reward not applied"
+    assert 'attack_attempt' in breakdown, "Attack attempt reward not applied when close"
 
-    print("\n[Hyper-Aggressive] Test Case 2: Time since last attack penalty")
+    print("\n[Hyper-Aggressive] Test Case 2: No attack attempt reward (too far)")
+    total_reward, breakdown = calculator.calculate_reward(
+        last_player_hp=0.9, player_hp=0.9,
+        last_boss_hp=0.8, boss_hp=0.8,
+        distance=5.0, time_alive=11.0, # Outside threshold
+        terminated=False, won=False, action_name='light_attack'
+    )
+    print(f"Reward: {total_reward:.4f}, Breakdown: {breakdown}")
+    assert 'attack_attempt' not in breakdown, "Attack attempt reward applied when too far"
+
+
+    print("\n[Hyper-Aggressive] Test Case 3: Time since last attack penalty")
     calculator.time_of_last_attack = time.time() - 2.0 # Simulate 2 seconds passing
     total_reward, breakdown = calculator.calculate_reward(
         last_player_hp=0.9, player_hp=0.9,
@@ -52,14 +63,13 @@ def test_hyper_aggressive_schema():
     )
     print(f"Reward: {total_reward:.4f}, Breakdown: {breakdown}")
     assert 'time_since_attack' in breakdown, "Time since attack penalty not applied"
-    # The penalty should be roughly -0.2 (-0.1 * 2 seconds)
     assert -0.21 < breakdown['time_since_attack'] < -0.19, "Time since attack penalty has wrong value"
 
-    print("\n[Hyper-Aggressive] Test Case 3: No distance reward")
+    print("\n[Hyper-Aggressive] Test Case 4: No distance reward")
     total_reward, breakdown = calculator.calculate_reward(
         last_player_hp=0.9, player_hp=0.9,
         last_boss_hp=0.8, boss_hp=0.8,
-        distance=15.0, time_alive=13.0, # Large distance that would normally be penalized
+        distance=15.0, time_alive=13.0,
         terminated=False, won=False, action_name='move_forward'
     )
     print(f"Reward: {total_reward:.4f}, Breakdown: {breakdown}")

@@ -74,6 +74,7 @@ schemas:
 
     # Action-specific rewards
     attack_attempt_reward: 0.05   # Reward for trying to attack
+    attack_distance_threshold: 4.0  # Max distance in meters to get the attack attempt reward
     dodge_reward: 0.0
     dodge_cooldown: 1.0
     heal_reward: 3.0

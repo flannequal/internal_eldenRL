@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pymem
 import pymem.process
+import pymem.pattern
 import yaml
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -302,3 +303,19 @@ class MemoryManager:
         except Exception as e:
             logging.error(f"Failed to free memory at {hex(address)}: {e}")
             return False
+
+    def pattern_scan_module(self, pattern: bytes, module_name: str) -> Optional[int]:
+        """Scans a module for a given byte pattern."""
+        if not self.attached or not self.pm:
+            return None
+        try:
+            module = pymem.process.module_from_name(self.pm.process_handle, module_name)
+            if not module:
+                logging.error(f"Could not find module '{module_name}'.")
+                return None
+
+            address = pymem.pattern.pattern_scan_module(self.pm.process_handle, module, pattern)
+            return address
+        except Exception as e:
+            logging.error(f"An error occurred during pattern scan: {e}")
+            return None
