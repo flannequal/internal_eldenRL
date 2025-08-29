@@ -119,12 +119,24 @@ class EldenEnv(gym.Env):
         if not self.game.teleport_to_arena(self.arena_id):
             return self.observation_space.sample(), {"error": "teleport_failed"}
         
-        time.sleep(1.0)
-        
+        time.sleep(0.2) # Shorten sleep after teleport
+
+        # Set player viewing angle
+        angle = self.arena_config.get("player_spawn_angle")
+        if angle:
+            self.game.set_player_angle(angle.get('cos_z', 1.0), angle.get('sin_z', 0.0))
+
+        # Find boss and set its position
         boss_param_id_str = str(self.arena_config.get("boss", {}).get("char_param_id", ""))
         boss_param_id = int(boss_param_id_str.split(':')[0])
-        if not self.game.find_boss_entity(boss_param_id):
-             return self.observation_space.sample(), {"error": "boss_not_found"}
+        if self.game.find_boss_entity(boss_param_id):
+            boss_spawn = self.arena_config.get("boss_spawn")
+            if boss_spawn:
+                self.game.set_boss_position(boss_spawn['x'], boss_spawn['y'], boss_spawn['z'])
+        else:
+            return self.observation_space.sample(), {"error": "boss_not_found"}
+
+        time.sleep(0.3) # Wait for positions to settle
 
         logging.info("Attempting to lock on to boss...")
         self.input_controller.lock_on()

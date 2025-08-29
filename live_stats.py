@@ -1,3 +1,5 @@
+import cv2
+import numpy as np
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
@@ -9,12 +11,11 @@ class LiveStatsDisplay:
     def __init__(self):
         pass
 
-    def generate_table(self, env, action_name: str) -> Panel:
+    def generate_table(self, env, action_name: str, fps: float, save_vision: bool) -> Panel:
         """
         Generates a Rich Panel containing the stats table.
         """
         last_info = env.last_info
-        # Use the last observation from the environment to avoid re-capturing
         obs = env.last_observation if hasattr(env, 'last_observation') else None
 
         if not obs:
@@ -32,13 +33,22 @@ class LiveStatsDisplay:
         table.add_row("Boss HP", f"{boss_hp_norm:.2%}")
         table.add_row("Distance to Boss", f"{env.last_distance:.2f}m")
         table.add_row("Last Action", action_name)
+        table.add_row("Loop FPS", f"{fps:.2f}")
+
+        # --- Vision Feed ---
+        if save_vision:
+            vision_obs = obs.get("vision")
+            if vision_obs is not None:
+                # Convert from RGB (gym standard) to BGR (cv2 standard)
+                img_bgr = cv2.cvtColor(vision_obs, cv2.COLOR_RGB2BGR)
+                cv2.imwrite("debug_vision.png", img_bgr)
+                table.add_row("Vision Feed", "debug_vision.png")
 
         # --- Reward Breakdown ---
         if last_info and "reward_breakdown" in last_info:
             table.add_section()
             rewards = last_info["reward_breakdown"]
             for key, value in rewards.items():
-                # Color rewards based on value
                 reward_style = "green" if value > 0 else "red" if value < 0 else "white"
                 table.add_row(f"Reward: {key}", f"[{reward_style}]{value:+.4f}[/{reward_style}]")
 

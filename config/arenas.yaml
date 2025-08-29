@@ -10,6 +10,12 @@ arenas:
       x: 3613.126708984375
       z: 89.67256927490234
       y: 6971.68212890625
-      tpdata_hex: "07d261455b58b34275ddd9454732213e00000000000000000000000000000000"
+    player_spawn_angle:
+      cos_z: 1.0
+      sin_z: 0.0
+    boss_spawn:
+      x: 3613.126708984375
+      z: 89.67256927490234
+      y: 6976.68212890625 # 5 units in front of player
     boss:
       char_param_id: 39701910:Azula Beastman

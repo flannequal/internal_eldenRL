@@ -114,6 +114,16 @@ teleport:
     offsets: [0x78]
     type: float
   
+  # Player's local orientation (what we write to)
+  PlayerAngleCosZ:
+    base: PlayerTransformComponent
+    offsets: [0x54]
+    type: float
+  PlayerAngleSinZ:
+    base: PlayerTransformComponent
+    offsets: [0x5C]
+    type: float
+
   # Game's global coordinates (what we read from)
   # This chain exactly matches "[[[[[[NetManImp]+ 80]+ E0] + 80] + 20] + 98] + 28"
   xGlobal:

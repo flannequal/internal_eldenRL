@@ -1,6 +1,7 @@
 import os
 import logging
 import sys
+import time
 import yaml
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
@@ -39,8 +40,9 @@ def train(config: dict):
 
     arena_id = config.get('BOSS', 1)
     model_name = f"PPO-Arena-{arena_id}"
+    run_id = int(time.time())
     models_dir = f"models/{model_name}/"
-    logdir = f"logs/{model_name}/"
+    logdir = f"logs/{model_name}/{run_id}/"
     model_path = f"{models_dir}/model.zip"
 
     os.makedirs(models_dir, exist_ok=True)
@@ -70,14 +72,25 @@ def train(config: dict):
         callback = TensorboardCallback()
         display = LiveStatsDisplay()
 
-        with Live(display.generate_table(env, env.last_action_name), screen=True, redirect_stderr=False) as live:
+        # Reset env once before starting to ensure initial observation is valid
+        env.reset()
+
+        save_vision = config.get("DEBUG_SAVE_VISION_FEED", False)
+
+        with Live(display.generate_table(env, env.last_action_name, 0.0, save_vision), screen=True, redirect_stderr=False) as live:
             while True:
+                start_time = time.time()
+
                 model.learn(total_timesteps=timesteps_per_iteration,
                             reset_num_timesteps=False,
                             tb_log_name="PPO",
                             callback=callback)
 
-                live.update(display.generate_table(env, env.last_action_name))
+                end_time = time.time()
+                time_delta = end_time - start_time
+                fps = timesteps_per_iteration / time_delta if time_delta > 0 else float('inf')
+
+                live.update(display.generate_table(env, env.last_action_name, fps, save_vision))
 
                 model.save(model_path)
                 logging.info(f"\nModel updated and saved to {model_path}")

@@ -117,6 +117,23 @@ class EldenRingGame:
             return None
         return None
 
+    def set_boss_position(self, x: float, y: float, z: float):
+        """Sets the boss's current X, Y, Z coordinates."""
+        if not self.boss_entity_addr:
+            return
+
+        try:
+            comp_ptr = self.mem.read_longlong(self.boss_entity_addr + 0x190)
+            if not comp_ptr: return
+            transform_ptr = self.mem.read_longlong(comp_ptr + 0x68)
+            if not transform_ptr: return
+
+            self.mem.write_float(transform_ptr + 0x70, x)
+            self.mem.write_float(transform_ptr + 0x74, z)
+            self.mem.write_float(transform_ptr + 0x78, y)
+        except Exception as e:
+            logging.error(f"Failed to set boss position: {e}")
+
     def get_distance_to_boss(self) -> Optional[float]:
         """Calculates the Euclidean distance between the player and the boss."""
         player_pos = self.get_player_position()
@@ -200,6 +217,11 @@ class EldenRingGame:
         if x is not None and z is not None and y is not None:
             return x, z, y
         return None
+
+    def set_player_angle(self, cos_z: float, sin_z: float):
+        """Sets the player's viewing angle (Z-axis azimuth)."""
+        self.mem.write_pointer("PlayerAngleCosZ", cos_z)
+        self.mem.write_pointer("PlayerAngleSinZ", sin_z)
 
     def teleport_to_arena(self, arena_id: int) -> bool:
         """Teleports the player to the spawn point of a specific arena."""
