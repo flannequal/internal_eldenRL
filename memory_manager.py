@@ -146,6 +146,8 @@ class MemoryManager:
             return addr, self.read_float(addr)
         elif value_type == "longlong":
             return addr, self.read_longlong(addr)
+        elif value_type == "byte":
+            return addr, self.read_byte(addr)
         elif value_type == "bytes":
             return addr, self.read_bytes(addr, length)
         else:
@@ -167,10 +169,54 @@ class MemoryManager:
             return self.write_float(addr, value)
         elif value_type == "longlong":
             return self.write_longlong(addr, value)
+        elif value_type == "byte":
+            return self.write_byte(addr, value)
         elif value_type == "bytes":
             return self.write_bytes(addr, value)
         else:
             logging.warning(f"Unsupported value type '{value_type}' for pointer '{name}'.")
+            return False
+
+    def _get_static_var_address(self, name: str) -> Optional[int]:
+        """Gets the absolute address of a static variable from its RVA."""
+        var_config = self.config.get("static_vars", {}).get(name)
+        if not var_config:
+            logging.error(f"Static variable '{name}' not found in config.")
+            return None
+        return self.module_base + var_config.get("rva", 0)
+
+    def read_static_var(self, name: str) -> Optional[Any]:
+        """Reads a value from a static variable in the config."""
+        addr = self._get_static_var_address(name)
+        if addr is None:
+            return None
+
+        var_config = self.config.get("static_vars", {}).get(name, {})
+        value_type = var_config.get("type", "bytes")
+
+        if value_type == "int":
+            return self.read_int(addr)
+        elif value_type == "byte":
+            return self.read_byte(addr)
+        else:
+            logging.warning(f"Unsupported value type '{value_type}' for static var '{name}'.")
+            return None
+
+    def write_static_var(self, name: str, value: Any) -> bool:
+        """Writes a value to a static variable in the config."""
+        addr = self._get_static_var_address(name)
+        if addr is None:
+            return False
+
+        var_config = self.config.get("static_vars", {}).get(name, {})
+        value_type = var_config.get("type", "bytes")
+
+        if value_type == "int":
+            return self.write_int(addr, value)
+        elif value_type == "byte":
+            return self.write_byte(addr, value)
+        else:
+            logging.warning(f"Unsupported value type '{value_type}' for static var '{name}'.")
             return False
 
     def read_teleport_coords(self) -> Optional[Tuple[float, float, float]]:
@@ -212,6 +258,9 @@ class MemoryManager:
     def read_byte(self, address: int) -> Optional[int]:
         data = self.read_bytes(address, 1)
         return int.from_bytes(data, 'little') if data else None
+
+    def write_byte(self, address: int, value: int) -> bool:
+        return self.write_bytes(address, value.to_bytes(1, 'little'))
 
     def read_int(self, address: int) -> Optional[int]:
         data = self.read_bytes(address, 4)
