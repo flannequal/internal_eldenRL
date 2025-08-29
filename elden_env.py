@@ -3,7 +3,7 @@ import time
 import os
 import yaml
 import math
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Callable
 
 import gymnasium as gym
 from gymnasium import spaces
@@ -54,6 +54,10 @@ class EldenEnv(gym.Env):
             num_actions = len(self.actions_config)
         self.action_space = spaces.Discrete(num_actions)
 
+        # Initialize action counter
+        self.action_names = [v['name'] for v in self.actions_config.values()]
+        self.action_counts = {name: 0 for name in self.action_names}
+
         self.observation_space = spaces.Dict({
             "vision": spaces.Box(low=0, high=255, shape=(180, 320, 3), dtype=np.uint8),
             "data": spaces.Box(low=0.0, high=1.0, shape=(2,), dtype=np.float32)
@@ -64,6 +68,19 @@ class EldenEnv(gym.Env):
         self.last_distance = 0.0
         self.last_action_name = "N/A"
         self.last_observation = None
+
+    def _wait_for_condition(self, condition_func: Callable[[], Any], expected_value: Any = True, timeout: float = 3.0, poll_interval: float = 0.1) -> bool:
+        """
+        Waits for a condition function to return an expected value or timeout.
+        """
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            value = condition_func()
+            if value == expected_value:
+                return True
+            time.sleep(poll_interval)
+        logging.warning(f"Timeout waiting for condition '{condition_func.__name__}' to be {expected_value}.")
+        return False
 
     def _get_observation(self) -> Optional[Dict[str, np.ndarray]]:
         if not self.game: return None
@@ -95,57 +112,73 @@ class EldenEnv(gym.Env):
 
         logging.info("Resetting environment...")
 
+        # --- 1. Player is dead, perform hard reset ---
         player_stats = self.game.get_player_stats()
         if player_stats and player_stats.get('hp', 0) <= 0:
             logging.info("Player is dead, performing instant reset.")
-            self.game.set_invisibility(True)
-            self.game.set_player_hp(player_stats.get('max_hp', 1000))
+            self.game.set_invisibility(True) # Become invisible to avoid aggression during reset
+
+            max_hp = player_stats.get('max_hp', 1000)
+            self.game.set_player_hp(max_hp)
 
             boss_stats = self.game.get_boss_hp()
             if boss_stats: self.game.set_boss_hp(boss_stats[1])
 
-            self.game.set_player_animation_override(0)
-            time.sleep(0.1)
+            self.game.set_player_animation_override(0) # Force idle animation
 
+            # Wait for HP to be restored
+            if not self._wait_for_condition(lambda: self.game.get_player_stats().get('hp'), max_hp):
+                logging.error("Player HP failed to restore after death.")
+                return self.observation_space.sample(), {"error": "hp_reset_failed"}
+
+        # --- 2. Teleport to Arena ---
+        spawn_coords = self.arena_config.get("player_spawn")
         if not self.game.teleport_to_arena(self.arena_id):
             return self.observation_space.sample(), {"error": "teleport_failed"}
-        time.sleep(0.2)
 
+        def check_position():
+            pos = self.game.get_player_position()
+            if not pos or not spawn_coords: return False
+            dist_sq = sum((pos[i] - spawn_coords[c])**2 for i, c in enumerate(['x', 'y', 'z']))
+            return dist_sq < 1.0**2 # Check if within 1 meter of spawn
+
+        if not self._wait_for_condition(check_position):
+             logging.error("Player failed to arrive at arena after teleport.")
+             return self.observation_space.sample(), {"error": "teleport_position_failed"}
+
+        # --- 3. Set Player Angle and Find Boss ---
         angle_config = self.arena_config.get("player_spawn_angle", {})
-        cos_z = angle_config.get('cos_z', 1.0)
-        sin_z = angle_config.get('sin_z', 0.0)
-        self.game.set_player_angle(cos_z, sin_z)
-        time.sleep(0.1)
+        self.game.set_player_angle(angle_config.get('cos_z', 1.0), angle_config.get('sin_z', 0.0))
 
         boss_param_id = int(str(self.arena_config.get("boss", {}).get("char_param_id", "")).split(':')[0])
         if not self.game.find_boss_entity(boss_param_id):
+            logging.error(f"Could not find boss with param ID {boss_param_id}.")
             return self.observation_space.sample(), {"error": "boss_not_found"}
+        time.sleep(0.1) # Brief pause for game state to settle after finding boss
 
-        #player_pos = self.game.get_player_position()
-        # if player_pos:
-        #     new_boss_x = player_pos[0] - (sin_z * 5)
-        #     new_boss_y = player_pos[1]
-        #     new_boss_z = player_pos[2] + (cos_z * 5)
-        #     self.game.set_boss_position(new_boss_x, new_boss_y, new_boss_z)
-
-        time.sleep(0.3)
-
+        # --- 4. Lock-on and Finalize ---
         logging.info("Attempting to lock on to boss...")
         self.input_controller.lock_on()
+        # NOTE: Verifying lock-on from memory is difficult. A short sleep is a pragmatic choice.
         time.sleep(0.5)
 
-        self.game.set_player_animation_override(-1)
-        self.game.set_invisibility(False)
+        self.game.set_player_animation_override(-1) # Release animation override
+        self.game.set_invisibility(False) # Become visible again
 
+        # --- 5. Final Observation ---
         self.episode_start_time = time.time()
         initial_obs = self._get_observation()
         if initial_obs is None:
+            logging.error("Failed to get initial observation after reset.")
             return self.observation_space.sample(), {"error": "initial_obs_failed"}
 
         self.last_player_hp = initial_obs["data"][0]
         self.last_boss_hp = initial_obs["data"][1]
+        self.action_counts = {name: 0 for name in self.action_names} # Reset action counts
         
+        logging.info("Environment reset successfully.")
         return initial_obs, {}
+
 
     def step(self, action: int) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
         if not self.game:
@@ -153,6 +186,8 @@ class EldenEnv(gym.Env):
 
         self.total_steps += 1
         self.last_action_name = self.input_controller.take_action(action)
+        if self.last_action_name in self.action_counts:
+            self.action_counts[self.last_action_name] += 1
         time.sleep(0.1)
 
         obs = self._get_observation()
@@ -171,7 +206,8 @@ class EldenEnv(gym.Env):
         total_reward, reward_breakdown = self.reward_calculator.calculate_reward(
             self.last_player_hp, player_hp_norm,
             self.last_boss_hp, boss_hp_norm,
-            distance, time_alive, terminated, won
+            distance, time_alive, terminated, won,
+            self.last_action_name
         )
 
         self.last_player_hp = player_hp_norm

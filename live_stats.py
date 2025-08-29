@@ -1,33 +1,40 @@
-import os
 import cv2
 from rich.console import Console
 from rich.table import Table
-from rich.panel import Panel
+from rich.live import Live
 
 class LiveStatsDisplay:
     """
-    A class to generate and print live training statistics to the console.
+    A class to generate and print live training statistics to the console using rich.Live.
     """
-    def __init__(self):
+    def __init__(self, env):
         self.console = Console()
+        self.live = Live(console=self.console, screen=False, auto_refresh=False)
+        # Assuming env.actions_config is a dict like {0: {'name': 'action1'}, 1: {'name': 'action2'}}
+        self.action_names = [v['name'] for v in env.actions_config.values()]
 
-    def print_update(self, env, fps: float, save_vision: bool):
-        """
-        Clears the console and prints an updated table of stats.
-        """
-        # This clear screen command is the simplest way, but might cause flicker.
-        # Given the issues with rich.Live, this is a more robust fallback.
-        os.system('cls' if os.name == 'nt' else 'clear')
+    def start(self):
+        """Starts the live display."""
+        self.live.start()
 
+    def stop(self):
+        """Stops the live display."""
+        self.live.stop()
+
+    def generate_table(self, env, fps: float, save_vision: bool) -> Table:
+        """
+        Generates the table with all the stats.
+        """
         action_name = env.last_action_name
         last_info = env.last_info
         obs = env.last_observation
 
-        if not obs:
-            self.console.print("[bold red]No observation data available yet.[/bold red]")
-            return
-
         table = Table(title="Elden Ring RL Live Stats", border_style="green")
+
+        if not obs:
+            table.add_row("[bold red]No observation data available yet.[/bold red]")
+            return table
+
         table.add_column("Metric", justify="right", style="cyan", no_wrap=True)
         table.add_column("Value", style="magenta")
 
@@ -56,4 +63,19 @@ class LiveStatsDisplay:
             total_style = "bold green" if total_reward > 0 else "bold red" if total_reward < 0 else "bold white"
             table.add_row(f"[bold]Total Step Reward[/bold]", f"[{total_style}]{total_reward:+.4f}[/{total_style}]")
 
-        self.console.print(table)
+        # --- Action Counts ---
+        if hasattr(env, 'action_counts'):
+            table.add_section()
+            table.add_row("[bold]Action Counts (Episode)[/bold]", "")
+            for action_name in self.action_names:
+                count = env.action_counts.get(action_name, 0)
+                table.add_row(action_name, str(count))
+
+        return table
+
+    def print_update(self, env, fps: float, save_vision: bool):
+        """
+        Updates the live display with a new table.
+        """
+        table = self.generate_table(env, fps, save_vision)
+        self.live.update(table, refresh=True)

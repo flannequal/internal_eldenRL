@@ -104,7 +104,8 @@ def train(config: dict):
         logging.info("Press CTRL+C to interrupt training and save the model.")
         print("="*50 + "\n")
         
-        display_manager = LiveStatsDisplay()
+        display_manager = LiveStatsDisplay(env)
+        display_manager.start()
         save_vision = config.get("DEBUG_SAVE_VISION_FEED", False)
         callback = ComprehensiveCallback(display_manager, save_vision)
 
@@ -120,6 +121,8 @@ def train(config: dict):
     except Exception as e:
         logging.error(f"\nAn error occurred during training: {e}", exc_info=True)
     finally:
+        if 'display_manager' in locals():
+            display_manager.stop()
         if 'model' in locals() and model_path:
             model.save(model_path)
             logging.info(f"Final model saved to {model_path}")
