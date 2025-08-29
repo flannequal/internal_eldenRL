@@ -97,7 +97,10 @@ class EldenRingGame:
         return None
 
     def get_boss_position(self) -> Optional[Tuple[float, float, float]]:
-        """Returns the boss's current X, Z, Y coordinates."""
+        """
+        Returns the boss's current (X, Y, Z) coordinates.
+        Y is the vertical axis.
+        """
         if not self.boss_entity_addr:
             return None
             
@@ -108,17 +111,20 @@ class EldenRingGame:
             if not transform_ptr: return None
 
             x = self.mem.read_float(transform_ptr + 0x70)
-            z = self.mem.read_float(transform_ptr + 0x74)
-            y = self.mem.read_float(transform_ptr + 0x78)
+            y = self.mem.read_float(transform_ptr + 0x74)
+            z = self.mem.read_float(transform_ptr + 0x78)
 
-            if x is not None and z is not None and y is not None:
-                return x, z, y
+            if x is not None and y is not None and z is not None:
+                return x, y, z
         except Exception:
             return None
         return None
 
     def set_boss_position(self, x: float, y: float, z: float):
-        """Sets the boss's current X, Y, Z coordinates."""
+        """
+        Sets the boss's current (X, Y, Z) coordinates.
+        Y is the vertical axis.
+        """
         if not self.boss_entity_addr:
             return
 
@@ -129,8 +135,8 @@ class EldenRingGame:
             if not transform_ptr: return
 
             self.mem.write_float(transform_ptr + 0x70, x)
-            self.mem.write_float(transform_ptr + 0x74, z)
-            self.mem.write_float(transform_ptr + 0x78, y)
+            self.mem.write_float(transform_ptr + 0x74, y)
+            self.mem.write_float(transform_ptr + 0x78, z)
         except Exception as e:
             logging.error(f"Failed to set boss position: {e}")
 
@@ -210,12 +216,15 @@ class EldenRingGame:
         self.mem.write_pointer("PlayerAnimationOverride", value)
 
     def get_player_position(self) -> Optional[Tuple[float, float, float]]:
-        """Returns the player's current X, Z, Y coordinates."""
+        """
+        Returns the player's current (X, Y, Z) coordinates.
+        Y is the vertical axis.
+        """
         _, x = self.mem.read_pointer("xPlayer")
-        _, z = self.mem.read_pointer("zPlayer")
         _, y = self.mem.read_pointer("yPlayer")
-        if x is not None and z is not None and y is not None:
-            return x, z, y
+        _, z = self.mem.read_pointer("zPlayer")
+        if x is not None and y is not None and z is not None:
+            return x, y, z
         return None
 
     def set_player_angle(self, cos_z: float, sin_z: float):
@@ -235,13 +244,15 @@ class EldenRingGame:
             logging.error(f"Arena '{arena_id}' has no player_spawn coordinates defined.")
             return False
             
-        x, z, y = spawn_coords.get("x"), spawn_coords.get("z"), spawn_coords.get("y")
-        if x is None or z is None or y is None:
+        x, y, z = spawn_coords.get("x"), spawn_coords.get("y"), spawn_coords.get("z")
+        if x is None or y is None or z is None:
             logging.error(f"Arena '{arena_id}' has incomplete player_spawn coordinates.")
             return False
             
         logging.info(f"Teleporting to arena '{arena.get('name', arena_id)}'...")
-        return self.teleporter.teleport_to_coords(x, z, y)
+        # Note: The teleport tool might have its own coordinate system.
+        # This implementation assumes the teleport tool and the coordinate system now match.
+        return self.teleporter.teleport_to_coords(x, y, z)
 
     def close(self):
         logging.info("EldenRingGame API shutting down.")

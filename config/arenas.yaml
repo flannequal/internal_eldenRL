@@ -8,14 +8,14 @@ arenas:
     nearest_bonfire_key: 'Limgrave - Groveside Cave'
     player_spawn:
       x: 3613.126708984375
-      z: 89.67256927490234
-      y: 6971.68212890625
+      y: 89.67256927490234
+      z: 6971.68212890625
     player_spawn_angle:
       cos_z: 1.0
       sin_z: 0.0
     boss_spawn:
       x: 3613.126708984375
-      z: 89.67256927490234
-      y: 6976.68212890625 # 5 units in front of player
+      y: 89.67256927490234
+      z: 6976.68212890625 # 5 units in front of player
     boss:
       char_param_id: 39701910:Azula Beastman
