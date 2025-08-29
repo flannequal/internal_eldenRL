@@ -18,3 +18,8 @@ TIMESTEPS_PER_ITERATION: 20000
 #   - "defensive": Rewards the agent for maintaining distance.
 #   - "hyper-aggressive": Forces the agent to attack and removes survival incentives.
 REWARD_SCHEMA: "hyper-aggressive"
+
+# --- Advanced Memory Settings ---
+# The pointer chain method for getting player position is more accurate but can be unstable.
+# Set to false to use the more stable direct pointers for x, y, and z coordinates.
+USE_POINTER_CHAIN_FOR_PLAYER_POS: false

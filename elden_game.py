@@ -13,10 +13,11 @@ class EldenRingGame:
     including dynamic boss detection and state tracking.
     """
 
-    def __init__(self, process_name: str = "eldenring.exe", arenas_path: str = "arenas.yaml"):
-        self.mem = MemoryManager(process_name)
+    def __init__(self, config: dict, arenas_path: str = "arenas.yaml"):
+        self.config = config
+        self.mem = MemoryManager(self.config.get("PROCESS_NAME", "eldenring.exe"))
         if not self.mem.attach():
-            raise RuntimeError(f"Failed to attach to {process_name}. Is the game running?")
+            raise RuntimeError(f"Failed to attach to {self.config.get('PROCESS_NAME', 'eldenring.exe')}. Is the game running?")
         
         config_dir = os.path.dirname(arenas_path)
         addresses_path = os.path.join(config_dir, "addresses.yaml")
@@ -45,7 +46,6 @@ class EldenRingGame:
             logging.error("Could not find address for CHR_DBG_FLAGS. Cannot set unlimited consumables.")
             return
 
-        # The address to patch is CHR_DBG_FLAGS + 3
         address_to_patch = chr_dbg_flags_addr + 3
         value_to_write = 1 if enabled else 0
 
@@ -68,23 +68,16 @@ class EldenRingGame:
             logging.error(f"Error loading arena configuration: {e}")
 
     def find_boss_entity(self, target_param_id: int) -> bool:
-        """
-        Scans memory for the boss NPC based on its character param ID.
-        """
         world_chr_man = self.mem._get_address_from_config("WorldChrMan")
         if not world_chr_man:
             return False
-
         try:
             list_start_ptr = world_chr_man + 0x1F1B8
             list_end_ptr = world_chr_man + 0x1F1C0
-
             start_addr = self.mem.read_longlong(list_start_ptr)
             end_addr = self.mem.read_longlong(list_end_ptr)
-
             if not start_addr or not end_addr or start_addr >= end_addr:
                 return False
-
             current_addr = start_addr
             while current_addr < end_addr:
                 entity_ptr = self.mem.read_longlong(current_addr)
@@ -97,24 +90,19 @@ class EldenRingGame:
                 current_addr += 8
         except Exception as e:
             logging.error(f"Error while scanning for boss entity: {e}")
-            
         self.boss_entity_addr = None
         return False
 
     def get_boss_hp(self) -> Optional[Tuple[int, int]]:
-        """Returns the boss's current and maximum HP if the entity has been found."""
         if not self.boss_entity_addr:
             return None
-        
         try:
             comp_ptr = self.mem.read_longlong(self.boss_entity_addr + 0x190)
             if not comp_ptr: return None
             stats_ptr = self.mem.read_longlong(comp_ptr + 0x0)
             if not stats_ptr: return None
-            
             current_hp = self.mem.read_int(stats_ptr + 0x138)
             max_hp = self.mem.read_int(stats_ptr + 0x13C)
-            
             if current_hp is not None and max_hp is not None:
                 return current_hp, max_hp
         except Exception:
@@ -122,14 +110,9 @@ class EldenRingGame:
         return None
 
     def get_boss_position(self) -> Optional[Tuple[float, float, float]]:
-        """
-        Returns the boss's current (X, Y, Z) coordinates.
-        Y is the vertical axis.
-        """
         if not self.boss_entity_addr:
             logging.debug("get_boss_position failed: boss_entity_addr is not set.")
             return None
-            
         try:
             comp_ptr = self.mem.read_longlong(self.boss_entity_addr + 0x190)
             if not comp_ptr:
@@ -139,11 +122,9 @@ class EldenRingGame:
             if not transform_ptr:
                 logging.debug("get_boss_position failed: transform_ptr is null.")
                 return None
-
             x = self.mem.read_float(transform_ptr + 0x70)
             y = self.mem.read_float(transform_ptr + 0x74)
             z = self.mem.read_float(transform_ptr + 0x78)
-
             if x is not None and y is not None and z is not None:
                 return x, y, z
         except Exception as e:
@@ -152,19 +133,13 @@ class EldenRingGame:
         return None
 
     def set_boss_position(self, x: float, y: float, z: float):
-        """
-        Sets the boss's current (X, Y, Z) coordinates.
-        Y is the vertical axis.
-        """
         if not self.boss_entity_addr:
             return
-
         try:
             comp_ptr = self.mem.read_longlong(self.boss_entity_addr + 0x190)
             if not comp_ptr: return
             transform_ptr = self.mem.read_longlong(comp_ptr + 0x68)
             if not transform_ptr: return
-
             self.mem.write_float(transform_ptr + 0x70, x)
             self.mem.write_float(transform_ptr + 0x74, y)
             self.mem.write_float(transform_ptr + 0x78, z)
@@ -172,51 +147,39 @@ class EldenRingGame:
             logging.error(f"Failed to set boss position: {e}")
 
     def get_distance_to_boss(self) -> Optional[float]:
-        """Calculates the Euclidean distance between the player and the boss."""
         player_pos = self.get_player_position()
         boss_pos = self.get_boss_position()
-
         if not player_pos:
             logging.warning("Could not calculate distance: Player position is unknown.")
             return None
         if not boss_pos:
             logging.warning("Could not calculate distance: Boss position is unknown.")
             return None
-
         distance = math.sqrt(sum([(a - b) ** 2 for a, b in zip(player_pos, boss_pos)]))
         logging.debug(f"Player pos: {player_pos}, Boss pos: {boss_pos}, Distance: {distance}")
         return distance
 
     def is_in_cutscene(self) -> bool:
-        """Checks if the game is currently in a cutscene or loading screen."""
         _, value = self.mem.read_pointer("InCutscene")
         return value == 1
 
     def set_invisibility(self, enabled: bool):
-        """
-        Sets the player's invisibility state via ChrDbgFlags.
-        This assumes bit 0x400 controls invisibility.
-        """
         INVISIBILITY_FLAG = 0x400
         current_flags = self.mem.read_static_var("ChrDbgFlags")
         if current_flags is None:
             logging.error("Could not read ChrDbgFlags to set invisibility.")
             return
-
         if enabled:
             new_flags = current_flags | INVISIBILITY_FLAG
         else:
             new_flags = current_flags & ~INVISIBILITY_FLAG
-
         self.mem.write_static_var("ChrDbgFlags", new_flags)
 
     def get_player_animation(self) -> Optional[int]:
-        """Returns the player's current animation ID."""
         _, anim_id = self.mem.read_pointer("PlayerAnimation")
         return anim_id
 
     def get_player_stats(self) -> Optional[dict]:
-        """Returns a dictionary of all primary player stats."""
         stats = {}
         _, hp = self.mem.read_pointer("PlayerHP")
         _, max_hp = self.mem.read_pointer("PlayerMaxHP")
@@ -225,105 +188,85 @@ class EldenRingGame:
         return stats if stats else None
 
     def set_player_hp(self, value: int):
-        """Sets the player's current HP."""
         self.mem.write_pointer("PlayerHP", value)
 
     def set_boss_hp(self, value: int):
-        """Sets the boss's current HP."""
         if not self.boss_entity_addr:
             return
-
         try:
             comp_ptr = self.mem.read_longlong(self.boss_entity_addr + 0x190)
             if not comp_ptr: return
             stats_ptr = self.mem.read_longlong(comp_ptr + 0x0)
             if not stats_ptr: return
-
             self.mem.write_int(stats_ptr + 0x138, value)
         except Exception as e:
             logging.error(f"Failed to set boss HP: {e}")
 
     def set_player_animation(self, value: int):
-        """Sets the player's current animation ID."""
         self.mem.write_pointer("PlayerAnimation", value)
 
     def set_player_animation_override(self, value: int):
-        """
-        Overrides the player's animation.
-        -1 to disable override, 0 for idle.
-        """
         self.mem.write_pointer("PlayerAnimationOverride", value)
 
     def get_player_position(self) -> Optional[Tuple[float, float, float]]:
-        """
-        Returns the player's current (X, Y, Z) coordinates. It first tries
-        the pointer chain method from the Lua script for accuracy, and falls
-        back to the simple x/y/z pointers if that fails.
-        """
-        # Primary method: Pointer chain from WorldChrMan
-        try:
-            world_chr_man_ptr = self.mem._get_address_from_config("WorldChrMan")
-            if world_chr_man_ptr:
-                p = self.mem.read_longlong(world_chr_man_ptr)
-                if p:
-                    p = self.mem.read_longlong(p + 0x1E508)
-                    if p:
-                        p = self.mem.read_longlong(p + 0x190)
-                        if p:
-                            p = self.mem.read_longlong(p + 0x68)
-                            if p:
-                                x = self.mem.read_float(p + 0x70)
-                                y = self.mem.read_float(p + 0x74)
-                                z = self.mem.read_float(p + 0x78)
-                                if x is not None and y is not None and z is not None:
-                                    logging.debug("Player position found via pointer chain.")
-                                    return x, y, z
-        except Exception as e:
-            logging.error(f"Error getting player position via pointer chain: {e}")
+        use_chain = self.config.get("USE_POINTER_CHAIN_FOR_PLAYER_POS", False)
 
-        # Fallback method: Direct pointers
-        logging.warning("Pointer chain method failed. Falling back to direct coordinate pointers.")
+        # Pointer chain method (potentially unstable)
+        if use_chain:
+            try:
+                world_chr_man_ptr = self.mem._get_address_from_config("WorldChrMan")
+                if world_chr_man_ptr:
+                    p = self.mem.read_longlong(world_chr_man_ptr)
+                    if p:
+                        p = self.mem.read_longlong(p + 0x1E508)
+                        if p:
+                            p = self.mem.read_longlong(p + 0x190)
+                            if p:
+                                p = self.mem.read_longlong(p + 0x68)
+                                if p:
+                                    x = self.mem.read_float(p + 0x70)
+                                    y = self.mem.read_float(p + 0x74)
+                                    z = self.mem.read_float(p + 0x78)
+                                    if x is not None and y is not None and z is not None:
+                                        logging.debug("Player position found via pointer chain.")
+                                        return x, y, z
+            except Exception as e:
+                logging.error(f"Error getting player position via pointer chain: {e}")
+
+        # Direct pointer method (more stable)
         try:
             _, x = self.mem.read_pointer("xPlayer")
             _, y = self.mem.read_pointer("yPlayer")
             _, z = self.mem.read_pointer("zPlayer")
             if x is not None and y is not None and z is not None:
-                logging.debug("Player position found via fallback direct pointers.")
+                logging.debug("Player position found via direct pointers.")
                 return x, y, z
         except Exception as e:
-            logging.error(f"Error getting player position via fallback pointers: {e}")
+            logging.error(f"Error getting player position via direct pointers: {e}")
 
         logging.error("Failed to get player position using all available methods.")
         return None
 
     def set_player_angle(self, cos_z: float, sin_z: float):
-        """Sets the player's viewing angle (Z-axis azimuth)."""
         self.mem.write_pointer("PlayerAngleCosZ", cos_z)
         self.mem.write_pointer("PlayerAngleSinZ", sin_z)
 
     def teleport_to_arena(self, arena_id: int) -> bool:
-        """Teleports the player to the spawn point of a specific arena."""
         arena = self.arenas.get(arena_id)
         if not arena:
             logging.error(f"Arena ID '{arena_id}' not found in configuration.")
             return False
-        
         spawn_coords = arena.get("player_spawn")
         if not spawn_coords:
             logging.error(f"Arena '{arena_id}' has no player_spawn coordinates defined.")
             return False
-            
-        # Use the corrected (X, Y, Z) coordinate system
         x = spawn_coords.get("x")
         y = spawn_coords.get("y")
         z = spawn_coords.get("z")
-
         if x is None or y is None or z is None:
             logging.error(f"Arena '{arena_id}' has incomplete player_spawn coordinates.")
             return False
-            
         logging.info(f"Teleporting to arena '{arena.get('name', arena_id)}'...")
-        # This assumes the teleport tool also uses a standard X, Y, Z system.
         return self.teleporter.teleport_to_coords(x, y, z)
 
     def close(self):

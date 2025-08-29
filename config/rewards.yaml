@@ -17,8 +17,8 @@ schemas:
     dodge_reward: 0.02
     dodge_cooldown: 1.5
     heal_reward: 5.0
-    heal_health_threshold: 0.6
-    unnecessary_heal_penalty: -2.0
+    heal_health_threshold: 0.5 # Standardized to half health
+    unnecessary_heal_penalty: -10.0 # Increased penalty
 
     # Combo rewards
     successive_hits_reward: 2.0
@@ -47,7 +47,7 @@ schemas:
     dodge_cooldown: 2.0
     heal_reward: 3.0
     heal_health_threshold: 0.5
-    unnecessary_heal_penalty: -3.0
+    unnecessary_heal_penalty: -10.0 # Increased penalty
 
     # Combo rewards
     successive_hits_reward: 5.0
@@ -62,7 +62,7 @@ schemas:
 
   hyper-aggressive:
     # Forces agent to attack, removes survival incentives.
-    boss_damage_multiplier: 250.0
+    boss_damage_multiplier: 350.0 # Increased
     player_damage_penalty: 150.0
     win_bonus: 300.0
     lose_penalty: -100.0
@@ -70,25 +70,25 @@ schemas:
     # Time-based rewards
     time_alive_multiplier: 0.0
     step_time_alive_reward: 0.0
-    time_since_attack_penalty: -0.1 # Penalty per second
+    time_since_attack_penalty: -0.1
 
     # Action-specific rewards
-    attack_attempt_reward: 0.05   # Reward for trying to attack
-    attack_distance_threshold: 4.0  # Max distance in meters to get the attack attempt reward
-    dodge_reward: 0.0               # Base dodge reward is off, we only want reactive dodges
+    attack_attempt_reward: 0.05
+    attack_distance_threshold: 4.0
+    dodge_reward: 0.0
     dodge_cooldown: 1.0
-    reactive_dodge_reward: 15.0     # Large reward for dodging shortly after being hit
-    reactive_dodge_window: 1.5      # Time in seconds after getting hit to perform a reactive dodge
-    heal_reward: 1.0                # Lowered reward for healing
+    reactive_dodge_reward: 15.0
+    reactive_dodge_window: 1.5
+    heal_reward: 1.0 # Decreased
     heal_health_threshold: 0.5
-    unnecessary_heal_penalty: -3.0
+    unnecessary_heal_penalty: -10.0 # Increased penalty
 
     # Combo rewards
-    successive_hits_reward: 10.0  # Very high combo reward
+    successive_hits_reward: 10.0
     successive_hits_time_window: 1.8
 
     # Distance parameters
-    enable_distance_reward: false # Disabled as requested
+    enable_distance_reward: false
 
   defensive:
     # Focus on survival and punishing from a safe distance.
@@ -105,8 +105,8 @@ schemas:
     dodge_reward: 0.05
     dodge_cooldown: 1.0
     heal_reward: 7.0
-    heal_health_threshold: 0.7
-    unnecessary_heal_penalty: -1.0
+    heal_health_threshold: 0.5 # Standardized to half health
+    unnecessary_heal_penalty: -10.0 # Increased penalty
 
     # Combo rewards
     successive_hits_reward: 1.0

@@ -32,7 +32,7 @@ class EldenEnv(gym.Env):
             arenas_path = os.path.join('config', 'arenas.yaml')
             actions_path = os.path.join('config', 'actions.yaml')
             
-            self.game = EldenRingGame(arenas_path=arenas_path)
+            self.game = EldenRingGame(config=env_config, arenas_path=arenas_path)
             self.input_controller = InputController(actions_config_path=actions_path)
             self.sct = mss.mss()
 

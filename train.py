@@ -42,9 +42,9 @@ class ComprehensiveCallback(BaseCallback):
 
             self.logger.dump(step=self.num_timesteps)
 
-        # Update the CLI display periodically (e.g., every 2 seconds)
+        # Update the CLI display periodically (e.g., every 0.5 seconds)
         current_time = time.time()
-        if current_time - self.last_print_time > 2.0:
+        if current_time - self.last_print_time > 0.5:
             steps_delta = self.num_timesteps - self.last_steps
             time_delta = current_time - self.last_time
             if time_delta > 0:
