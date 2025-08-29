@@ -18,6 +18,7 @@ schemas:
     dodge_cooldown: 1.5             # Seconds to wait before rewarding dodge again
     heal_reward: 5.0
     heal_health_threshold: 0.6      # Only reward healing if HP is below this threshold
+    unnecessary_heal_penalty: -2.0  # Penalty for healing when above the threshold
 
     # Combo rewards
     successive_hits_reward: 2.0
@@ -46,6 +47,7 @@ schemas:
     dodge_cooldown: 2.0
     heal_reward: 3.0
     heal_health_threshold: 0.5
+    unnecessary_heal_penalty: -3.0
 
     # Combo rewards
     successive_hits_reward: 5.0     # High reward for combos
@@ -74,6 +76,7 @@ schemas:
     dodge_cooldown: 1.0
     heal_reward: 7.0
     heal_health_threshold: 0.7
+    unnecessary_heal_penalty: -1.0
 
     # Combo rewards
     successive_hits_reward: 1.0

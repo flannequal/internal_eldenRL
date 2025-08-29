@@ -47,7 +47,7 @@ def test_reward_calculator():
     )
     print(f"Reward: {total_reward:.4f}, Breakdown: {breakdown}")
 
-    print("\n--- Test Case 5: Agent heals below threshold ---")
+    print("\n--- Test Case 5: Agent heals below threshold (should be rewarded) ---")
     total_reward, breakdown = calculator.calculate_reward(
         last_player_hp=0.5, player_hp=0.7,
         last_boss_hp=0.75, boss_hp=0.75,
@@ -56,8 +56,9 @@ def test_reward_calculator():
         action_name='heal'
     )
     print(f"Reward: {total_reward:.4f}, Breakdown: {breakdown}")
+    assert 'heal_bonus' in breakdown, "Heal bonus not applied when healing below threshold"
 
-    print("\n--- Test Case 6: Agent heals above threshold ---")
+    print("\n--- Test Case 6: Agent heals above threshold (should be penalized) ---")
     total_reward, breakdown = calculator.calculate_reward(
         last_player_hp=0.7, player_hp=0.9,
         last_boss_hp=0.75, boss_hp=0.75,
@@ -66,8 +67,10 @@ def test_reward_calculator():
         action_name='heal'
     )
     print(f"Reward: {total_reward:.4f}, Breakdown: {breakdown}")
+    assert 'heal_penalty' in breakdown, "Heal penalty not applied when healing above threshold"
 
     print("\n--- Test Case 7: Successive hits ---")
+    # First hit
     calculator.calculate_reward(
         last_player_hp=0.9, player_hp=0.9,
         last_boss_hp=0.75, boss_hp=0.70,
@@ -75,6 +78,7 @@ def test_reward_calculator():
         terminated=False, won=False,
         action_name='light_attack'
     )
+    # Second hit (should trigger combo)
     total_reward, breakdown = calculator.calculate_reward(
         last_player_hp=0.9, player_hp=0.9,
         last_boss_hp=0.70, boss_hp=0.65,
@@ -83,6 +87,7 @@ def test_reward_calculator():
         action_name='light_attack'
     )
     print(f"Reward: {total_reward:.4f}, Breakdown: {breakdown}")
+    assert 'combo' in breakdown, "Combo reward not applied for successive hits"
 
 
 if __name__ == '__main__':

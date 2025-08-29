@@ -68,7 +68,9 @@ class RewardCalculator:
         if player_hp > last_player_hp: # Player healed
             threshold = self.schema.get('heal_health_threshold', 0.6)
             if last_player_hp < threshold:
-                reward_breakdown['heal'] = self.schema.get('heal_reward', 0)
+                reward_breakdown['heal_bonus'] = self.schema.get('heal_reward', 0)
+            else:
+                reward_breakdown['heal_penalty'] = self.schema.get('unnecessary_heal_penalty', 0)
 
         # --- Combo Rewards ---
         if boss_hp_diff > 0: # A hit landed on the boss

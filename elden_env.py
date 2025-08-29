@@ -111,40 +111,32 @@ class EldenEnv(gym.Env):
             return self.observation_space.sample(), {}
 
         logging.info("Resetting environment...")
+        self.game.set_invisibility(True)
+        self.game.set_player_animation_override(0)
 
-        # --- 1. Player is dead, perform hard reset ---
+        # --- 1. Player Health and Stats Reset ---
         player_stats = self.game.get_player_stats()
-        if player_stats and player_stats.get('hp', 0) <= 0:
-            logging.info("Player is dead, performing instant reset.")
-            self.game.set_invisibility(True) # Become invisible to avoid aggression during reset
-
+        if player_stats:
             max_hp = player_stats.get('max_hp', 1000)
             self.game.set_player_hp(max_hp)
 
-            boss_stats = self.game.get_boss_hp()
-            if boss_stats: self.game.set_boss_hp(boss_stats[1])
-
-            self.game.set_player_animation_override(0) # Force idle animation
-
             # Wait for HP to be restored
             if not self._wait_for_condition(lambda: self.game.get_player_stats().get('hp'), max_hp):
-                logging.error("Player HP failed to restore after death.")
-                return self.observation_space.sample(), {"error": "hp_reset_failed"}
+                logging.error("Player HP failed to restore during reset.")
+                # We still try to continue, as the next steps might fix it
+
+        boss_stats = self.game.get_boss_hp()
+        if boss_stats:
+            self.game.set_boss_hp(boss_stats[1])
 
         # --- 2. Teleport to Arena ---
-        spawn_coords = self.arena_config.get("player_spawn")
         if not self.game.teleport_to_arena(self.arena_id):
+            self.game.set_invisibility(False) # Make sure we are visible on failure
             return self.observation_space.sample(), {"error": "teleport_failed"}
 
-        def check_position():
-            pos = self.game.get_player_position()
-            if not pos or not spawn_coords: return False
-            dist_sq = sum((pos[i] - spawn_coords[c])**2 for i, c in enumerate(['x', 'y', 'z']))
-            return dist_sq < 1.0**2 # Check if within 1 meter of spawn
-
-        if not self._wait_for_condition(check_position):
-             logging.error("Player failed to arrive at arena after teleport.")
-             return self.observation_space.sample(), {"error": "teleport_position_failed"}
+        # The teleport is now considered successful if the function returns true.
+        # A brief sleep is kept to allow game state to settle post-teleport.
+        time.sleep(1.0)
 
         # --- 3. Set Player Angle and Find Boss ---
         angle_config = self.arena_config.get("player_spawn_angle", {})
@@ -153,13 +145,13 @@ class EldenEnv(gym.Env):
         boss_param_id = int(str(self.arena_config.get("boss", {}).get("char_param_id", "")).split(':')[0])
         if not self.game.find_boss_entity(boss_param_id):
             logging.error(f"Could not find boss with param ID {boss_param_id}.")
+            self.game.set_invisibility(False)
             return self.observation_space.sample(), {"error": "boss_not_found"}
-        time.sleep(0.1) # Brief pause for game state to settle after finding boss
+        time.sleep(0.1)
 
         # --- 4. Lock-on and Finalize ---
         logging.info("Attempting to lock on to boss...")
         self.input_controller.lock_on()
-        # NOTE: Verifying lock-on from memory is difficult. A short sleep is a pragmatic choice.
         time.sleep(0.5)
 
         self.game.set_player_animation_override(-1) # Release animation override
@@ -174,7 +166,7 @@ class EldenEnv(gym.Env):
 
         self.last_player_hp = initial_obs["data"][0]
         self.last_boss_hp = initial_obs["data"][1]
-        self.action_counts = {name: 0 for name in self.action_names} # Reset action counts
+        self.action_counts = {name: 0 for name in self.action_names}
         
         logging.info("Environment reset successfully.")
         return initial_obs, {}
