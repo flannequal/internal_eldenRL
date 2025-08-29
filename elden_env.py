@@ -12,6 +12,7 @@ import cv2
 
 from elden_game import EldenRingGame
 from input_controller import InputController
+from reward_calculator import RewardCalculator
 
 class EldenEnv(gym.Env):
     """
@@ -34,13 +35,20 @@ class EldenEnv(gym.Env):
             self.input_controller = InputController(actions_config_path=actions_path)
             self.sct = mss.mss()
 
+            # Initialize the reward calculator with the specified schema
+            reward_schema = env_config.get("REWARD_SCHEMA", "standard")
+            self.reward_calculator = RewardCalculator(reward_schema)
+
         except RuntimeError as e:
             logging.error(f"Could not initialize Elden Ring environment: {e}")
             self.game = None
             return
+        except ValueError as e:
+            logging.error(f"Configuration error: {e}")
+            self.game = None
+            return
             
         self.arena_id = env_config.get("BOSS", 1)
-        self.training_mode = env_config.get("TRAINING_MODE", "standard")
         self.arena_config = self.game.arenas.get(self.arena_id)
         if not self.arena_config:
             raise ValueError(f"Arena ID {self.arena_id} not found in arenas.yaml")
@@ -60,6 +68,7 @@ class EldenEnv(gym.Env):
         self.last_boss_hp = 1.0
         self.last_distance = 0.0
         self.last_action_name = "N/A"
+        self.last_observation = None
 
     def _get_observation(self) -> Optional[Dict[str, np.ndarray]]:
         if not self.game: return None
@@ -97,24 +106,20 @@ class EldenEnv(gym.Env):
         if player_stats and player_stats.get('hp', 0) <= 0:
             logging.info("Player is dead, performing instant reset.")
 
-            # Make player invisible to enemies
             self.game.set_invisibility(True)
-
-            # Reset player and boss HP
             self.game.set_player_hp(player_stats.get('max_hp', 1000))
 
             boss_stats = self.game.get_boss_hp()
             if boss_stats:
-                self.game.set_boss_hp(boss_stats[1]) # Set to max HP
+                self.game.set_boss_hp(boss_stats[1])
 
-            # Override animation to idle to prevent death animation
             self.game.set_player_animation_override(0)
-            time.sleep(0.1) # Give the game a moment to process the override
+            time.sleep(0.1)
 
         if not self.game.teleport_to_arena(self.arena_id):
             return self.observation_space.sample(), {"error": "teleport_failed"}
         
-        time.sleep(1.0) # Reduced sleep time
+        time.sleep(1.0)
         
         boss_param_id_str = str(self.arena_config.get("boss", {}).get("char_param_id", ""))
         boss_param_id = int(boss_param_id_str.split(':')[0])
@@ -125,7 +130,6 @@ class EldenEnv(gym.Env):
         self.input_controller.lock_on()
         time.sleep(0.5)
 
-        # Release animation override and invisibility
         self.game.set_player_animation_override(-1)
         self.game.set_invisibility(False)
 
@@ -137,6 +141,7 @@ class EldenEnv(gym.Env):
 
         self.last_player_hp = initial_obs["data"][0]
         self.last_boss_hp = initial_obs["data"][1]
+        self.last_observation = initial_obs
         
         return initial_obs, {}
 
@@ -152,45 +157,29 @@ class EldenEnv(gym.Env):
         obs = self._get_observation()
         if obs is None:
             logging.warning("Failed to get observation in step. Returning last known state.")
-            # Return a dummy observation and no-op reward
             return self.observation_space.sample(), 0.0, False, False, {"error": "obs_failed"}
 
+        self.last_observation = obs
         player_hp_norm = obs["data"][0]
         boss_hp_norm = obs["data"][1]
         distance = self.game.get_distance_to_boss() or self.last_distance
         
-        # --- Continuous Reward Calculation ---
-        reward_breakdown = {
-            "boss_damage": (self.last_boss_hp - boss_hp_norm) * 150.0,
-            "hp_penalty": (self.last_player_hp - player_hp_norm) * 100.0,
-            "distance": 0.0,
-            "time_alive": 0.0,
-            "win_bonus": 0.0,
-            "lose_penalty": 0.0
-        }
+        terminated = (player_hp_norm <= 0.01)
+        won = (boss_hp_norm <= 0.01)
+        if won:
+            terminated = True
 
-        if self.training_mode == 'aggressive':
-            reward_breakdown["distance"] = -0.66 * min(distance, 15) + 8
-        elif self.training_mode == 'defensive':
-            reward_breakdown["distance"] = 0.5 * min(distance, 20) - 8
+        time_alive = time.time() - self.episode_start_time
+
+        total_reward, reward_breakdown = self.reward_calculator.calculate_reward(
+            self.last_player_hp, player_hp_norm,
+            self.last_boss_hp, boss_hp_norm,
+            distance, time_alive, terminated, won
+        )
 
         self.last_player_hp = player_hp_norm
         self.last_boss_hp = boss_hp_norm
         self.last_distance = distance
-
-        terminated = False
-        if player_hp_norm <= 0.01:
-            reward_breakdown["lose_penalty"] = -100.0
-            terminated = True
-        if boss_hp_norm <= 0.01:
-            reward_breakdown["win_bonus"] = 200.0
-            terminated = True
-        
-        if terminated:
-            time_alive = time.time() - self.episode_start_time
-            reward_breakdown["time_alive"] = max(0, time_alive * 0.1)
-
-        total_reward = sum(reward_breakdown.values())
         self.last_info = {"reward_breakdown": reward_breakdown}
 
         return obs, total_reward, terminated, False, self.last_info

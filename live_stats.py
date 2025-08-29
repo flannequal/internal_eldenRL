@@ -1,31 +1,29 @@
-import os
-from rich.console import Console
 from rich.table import Table
+from rich.panel import Panel
+from rich.text import Text
 
 class LiveStatsDisplay:
     """
-    A class to display live training statistics in the console.
+    A class to generate a renderable object for live training statistics.
     """
     def __init__(self):
-        self.console = Console()
+        pass
 
-    def update(self, env, action_name: str):
+    def generate_table(self, env, action_name: str) -> Panel:
         """
-        Clears the console and prints an updated table of stats.
+        Generates a Rich Panel containing the stats table.
         """
-        os.system('cls' if os.name == 'nt' else 'clear')
-
         last_info = env.last_info
-        obs = env._get_observation() # Get the most recent observation
+        # Use the last observation from the environment to avoid re-capturing
+        obs = env.last_observation if hasattr(env, 'last_observation') else None
 
         if not obs:
-            self.console.print("[bold red]Could not retrieve game data.[/bold red]")
-            return
+            return Panel(Text("Could not retrieve game data.", justify="center"), title="[bold red]Error[/bold red]", border_style="red")
 
         player_hp_norm = obs["data"][0]
         boss_hp_norm = obs["data"][1]
 
-        table = Table(title="Elden Ring RL Live Stats")
+        table = Table(title="Elden Ring RL Live Stats", border_style="green")
         table.add_column("Metric", justify="right", style="cyan", no_wrap=True)
         table.add_column("Value", style="magenta")
 
@@ -40,9 +38,12 @@ class LiveStatsDisplay:
             table.add_section()
             rewards = last_info["reward_breakdown"]
             for key, value in rewards.items():
-                table.add_row(f"Reward: {key}", f"{value:+.4f}")
+                # Color rewards based on value
+                reward_style = "green" if value > 0 else "red" if value < 0 else "white"
+                table.add_row(f"Reward: {key}", f"[{reward_style}]{value:+.4f}[/{reward_style}]")
 
             total_reward = sum(rewards.values())
-            table.add_row("[bold]Total Step Reward[/bold]", f"[bold]{total_reward:+.4f}[/bold]")
+            total_style = "bold green" if total_reward > 0 else "bold red" if total_reward < 0 else "bold white"
+            table.add_row(f"[bold]Total Step Reward[/bold]", f"[{total_style}]{total_reward:+.4f}[/{total_style}]")
 
-        self.console.print(table)
+        return Panel(table, border_style="blue")

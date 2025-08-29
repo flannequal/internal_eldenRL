@@ -7,6 +7,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from elden_env import EldenEnv
 from live_stats import LiveStatsDisplay
+from rich.live import Live
 
 class TensorboardCallback(BaseCallback):
     """
@@ -18,6 +19,7 @@ class TensorboardCallback(BaseCallback):
             rewards = self.training_env.get_attr('last_info')[0]['reward_breakdown']
             for key, value in rewards.items():
                 self.logger.record(f'rewards/{key}', value)
+            self.logger.dump(step=self.num_timesteps)
         return True
 
 def train(config: dict):
@@ -68,20 +70,17 @@ def train(config: dict):
         callback = TensorboardCallback()
         display = LiveStatsDisplay()
 
-        # Initial display before training starts
-        display.update(env, env.last_action_name)
+        with Live(display.generate_table(env, env.last_action_name), screen=True, redirect_stderr=False) as live:
+            while True:
+                model.learn(total_timesteps=timesteps_per_iteration,
+                            reset_num_timesteps=False,
+                            tb_log_name="PPO",
+                            callback=callback)
 
-        while True:
-            model.learn(total_timesteps=timesteps_per_iteration,
-                        reset_num_timesteps=False, 
-                        tb_log_name="PPO",
-                        callback=callback)
+                live.update(display.generate_table(env, env.last_action_name))
 
-            # Update the display after each learning cycle
-            display.update(env, env.last_action_name)
-
-            model.save(model_path)
-            logging.info(f"\nModel updated and saved to {model_path}")
+                model.save(model_path)
+                logging.info(f"\nModel updated and saved to {model_path}")
     except KeyboardInterrupt:
         logging.info("\nTraining interrupted by user.")
     except Exception as e:
