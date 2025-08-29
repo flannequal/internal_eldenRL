@@ -31,14 +31,8 @@ if __name__ == '__main__':
         env_config = {
             "PROCESS_NAME": "eldenring.exe",
             "BOSS": 8,
-            "DESIRED_FPS": 24,
-            "SIMULATE_MEMORY": False,
+            "DESIRED_FPS": 24, #we should start using this, right now isnt used
             "DISABLE_INPUT": False,
-            "LOG_MEMORY_DEBUG": True,
-            "MEMORY_DEBUG_INTERVAL": 1,
             "DEBUG_SAVE_VISION_FEED": True,
         }
-    CREATE_NEW_MODEL = True
-    # Create a new model or resume training for an existing model
-
     train.train(env_config)

@@ -55,7 +55,7 @@ class EldenEnv(gym.Env):
         self.action_space = spaces.Discrete(num_actions)
 
         self.observation_space = spaces.Dict({
-            "vision": spaces.Box(low=0, high=255, shape=(90, 160, 3), dtype=np.uint8),
+            "vision": spaces.Box(low=0, high=255, shape=(180, 320, 3), dtype=np.uint8),
             "data": spaces.Box(low=0.0, high=1.0, shape=(2,), dtype=np.float32)
         })
         
@@ -71,7 +71,7 @@ class EldenEnv(gym.Env):
         monitor = self.sct.monitors[1]
         sct_img = self.sct.grab(monitor)
         frame = np.array(sct_img)
-        vision_obs = cv2.resize(frame, (160, 90))
+        vision_obs = cv2.resize(frame, (320, 180))
         vision_obs = cv2.cvtColor(vision_obs, cv2.COLOR_BGRA2RGB)
 
         player_stats = self.game.get_player_stats()
@@ -121,12 +121,12 @@ class EldenEnv(gym.Env):
         if not self.game.find_boss_entity(boss_param_id):
             return self.observation_space.sample(), {"error": "boss_not_found"}
 
-        player_pos = self.game.get_player_position()
-        if player_pos:
-            new_boss_x = player_pos[0] - (sin_z * 5)
-            new_boss_y = player_pos[1]
-            new_boss_z = player_pos[2] + (cos_z * 5)
-            self.game.set_boss_position(new_boss_x, new_boss_y, new_boss_z)
+        #player_pos = self.game.get_player_position()
+        # if player_pos:
+        #     new_boss_x = player_pos[0] - (sin_z * 5)
+        #     new_boss_y = player_pos[1]
+        #     new_boss_z = player_pos[2] + (cos_z * 5)
+        #     self.game.set_boss_position(new_boss_x, new_boss_y, new_boss_z)
 
         time.sleep(0.3)
 
