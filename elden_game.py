@@ -244,14 +244,17 @@ class EldenRingGame:
             logging.error(f"Arena '{arena_id}' has no player_spawn coordinates defined.")
             return False
             
-        x, y, z = spawn_coords.get("x"), spawn_coords.get("y"), spawn_coords.get("z")
+        # Use the corrected (X, Y, Z) coordinate system
+        x = spawn_coords.get("x")
+        y = spawn_coords.get("y")
+        z = spawn_coords.get("z")
+
         if x is None or y is None or z is None:
             logging.error(f"Arena '{arena_id}' has incomplete player_spawn coordinates.")
             return False
             
         logging.info(f"Teleporting to arena '{arena.get('name', arena_id)}'...")
-        # Note: The teleport tool might have its own coordinate system.
-        # This implementation assumes the teleport tool and the coordinate system now match.
+        # This assumes the teleport tool also uses a standard X, Y, Z system.
         return self.teleporter.teleport_to_coords(x, y, z)
 
     def close(self):

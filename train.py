@@ -8,19 +8,55 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from elden_env import EldenEnv
 from live_stats import LiveStatsDisplay
-from rich.live import Live
 
-class TensorboardCallback(BaseCallback):
+class ComprehensiveCallback(BaseCallback):
     """
-    A custom callback to log reward components to TensorBoard.
+    A custom callback that handles:
+    - Per-episode TensorBoard logging.
+    - Periodic CLI stats updates.
     """
+    def __init__(self, display_manager: LiveStatsDisplay, save_vision_flag: bool, verbose: int = 0):
+        super(ComprehensiveCallback, self).__init__(verbose)
+        self.display_manager = display_manager
+        self.save_vision = save_vision_flag
+        self.episode_num = 0
+        self.last_print_time = 0
+        self.fps = 0
+        self.last_time = time.time()
+        self.last_steps = 0
+
     def _on_step(self) -> bool:
-        # Check if the environment has logged reward components
+        # Check for episode termination
+        if self.locals['dones'][0]:
+            self.episode_num += 1
+
+        # Log reward components to TensorBoard with an episode prefix
         if 'reward_breakdown' in self.training_env.get_attr('last_info')[0]:
             rewards = self.training_env.get_attr('last_info')[0]['reward_breakdown']
             for key, value in rewards.items():
-                self.logger.record(f'rewards/{key}', value)
+                self.logger.record(f'ep_{self.episode_num}/{key}', value)
+
+            # Also log the standard rollout/ep_rew_mean for overall tracking
+            if 'ep_rew_mean' in self.locals['infos'][0]:
+                 self.logger.record('rollout/ep_rew_mean', self.locals['infos'][0]['ep_rew_mean'])
+
             self.logger.dump(step=self.num_timesteps)
+
+        # Update the CLI display periodically (e.g., every 2 seconds)
+        current_time = time.time()
+        if current_time - self.last_print_time > 2.0:
+            steps_delta = self.num_timesteps - self.last_steps
+            time_delta = current_time - self.last_time
+            if time_delta > 0:
+                self.fps = steps_delta / time_delta
+
+            self.last_time = current_time
+            self.last_steps = self.num_timesteps
+
+            env = self.training_env.envs[0]
+            self.display_manager.print_update(env, self.fps, self.save_vision)
+            self.last_print_time = current_time
+
         return True
 
 def train(config: dict):
@@ -35,7 +71,7 @@ def train(config: dict):
             raise RuntimeError("EldenEnv could not attach to the game.")
         logging.info("EldenEnv initialized successfully.")
     except Exception as e:
-        logging.error(f"Failed to create Elden Ring environment: {e}")
+        logging.error(f"Failed to create Elden Ring environment: {e}", exc_info=True)
         sys.exit(1)
 
     arena_id = config.get('BOSS', 1)
@@ -48,7 +84,6 @@ def train(config: dict):
     os.makedirs(models_dir, exist_ok=True)
     os.makedirs(logdir, exist_ok=True)
 
-    # --- Use MultiInputPolicy for vision + data ---
     if os.path.exists(model_path):
         logging.info(f"Found existing model at {model_path}. Deleting to ensure MultiInputPolicy is used.")
         os.remove(model_path)
@@ -61,7 +96,7 @@ def train(config: dict):
                 verbose=1,
                 device='cuda')
 
-    timesteps_per_iteration = config.get("TIMESTEPS_PER_ITERATION", 10000)
+    timesteps_per_iteration = config.get("TIMESTEPS_PER_ITERATION", 100000)
     try:
         print("\n" + "="*50)
         logging.info("Starting training loop...")
@@ -69,39 +104,27 @@ def train(config: dict):
         logging.info("Press CTRL+C to interrupt training and save the model.")
         print("="*50 + "\n")
         
-        callback = TensorboardCallback()
-        display = LiveStatsDisplay()
-
-        # Reset env once before starting to ensure initial observation is valid
-        env.reset()
-
+        display_manager = LiveStatsDisplay()
         save_vision = config.get("DEBUG_SAVE_VISION_FEED", False)
+        callback = ComprehensiveCallback(display_manager, save_vision)
 
-        with Live(display.generate_table(env, env.last_action_name, 0.0, save_vision), screen=True, redirect_stderr=False) as live:
-            while True:
-                start_time = time.time()
-
-                model.learn(total_timesteps=timesteps_per_iteration,
-                            reset_num_timesteps=False,
-                            tb_log_name="PPO",
-                            callback=callback)
-
-                end_time = time.time()
-                time_delta = end_time - start_time
-                fps = timesteps_per_iteration / time_delta if time_delta > 0 else float('inf')
-
-                live.update(display.generate_table(env, env.last_action_name, fps, save_vision))
-
-                model.save(model_path)
-                logging.info(f"\nModel updated and saved to {model_path}")
+        while True:
+            model.learn(total_timesteps=timesteps_per_iteration,
+                        reset_num_timesteps=False,
+                        tb_log_name="PPO",
+                        callback=callback)
+            model.save(model_path)
+            logging.info(f"\nModel updated and saved to {model_path}")
     except KeyboardInterrupt:
         logging.info("\nTraining interrupted by user.")
     except Exception as e:
         logging.error(f"\nAn error occurred during training: {e}", exc_info=True)
     finally:
-        model.save(model_path)
-        logging.info(f"Final model saved to {model_path}")
-        env.close()
+        if 'model' in locals() and model_path:
+            model.save(model_path)
+            logging.info(f"Final model saved to {model_path}")
+        if 'env' in locals():
+            env.close()
         logging.info("Environment closed. Training finished.")
 
 

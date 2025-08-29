@@ -24,7 +24,7 @@ pointers:
   # Intermediate Pointers for clarity and structure
   LocalPlayer:
     base: WorldChrMan
-    offsets: [0x10EF8, 0x0] # This chain gets us to the player's base entity
+    offsets: [0x1E508] # Corrected offset based on Npc manager.lua
     type: longlong
 
   PlayerStatsComponent:
