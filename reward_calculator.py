@@ -112,8 +112,8 @@ class RewardCalculator:
 
         return total_reward, final_rewards
 
-    def _calculate_distance_reward(self, distance: float) -> float:
-        """Calculates reward based on distance to the boss."""
+    #calculate distance to boss
+    def _calculate_distance_reward(self, distance: float) -> float:  
         reward_type = self.schema.get('distance_reward_type', 'bell')
         optimal_dist = self.schema.get('optimal_distance', 8.0)
         scale = self.schema.get('distance_reward_scale', 5.0)
