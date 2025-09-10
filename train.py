@@ -15,10 +15,9 @@ class ComprehensiveCallback(BaseCallback):
     - Per-episode TensorBoard logging.
     - Periodic CLI stats updates.
     """
-    def __init__(self, display_manager: LiveStatsDisplay, save_vision_flag: bool, verbose: int = 0):
+    def __init__(self, display_manager: LiveStatsDisplay, verbose: int = 0):
         super(ComprehensiveCallback, self).__init__(verbose)
         self.display_manager = display_manager
-        self.save_vision = save_vision_flag
         self.episode_num = 0
         self.last_print_time = 0
         self.fps = 0
@@ -54,7 +53,7 @@ class ComprehensiveCallback(BaseCallback):
             self.last_steps = self.num_timesteps
 
             env = self.training_env.envs[0].env
-            self.display_manager.print_update(env, self.fps, self.save_vision)
+            self.display_manager.print_update(env, self.fps, False)
             self.last_print_time = current_time
 
         return True
@@ -88,8 +87,8 @@ def train(config: dict):
         logging.info(f"Found existing model at {model_path}. Deleting to ensure MultiInputPolicy is used.")
         os.remove(model_path)
 
-    logging.info("Creating a new PPO model with MultiInputPolicy...")
-    model = PPO('MultiInputPolicy',
+    logging.info("Creating a new PPO model with MlpPolicy...")
+    model = PPO('MlpPolicy',
                 env,
                 tensorboard_log=logdir,
                 n_steps=2048,
@@ -105,8 +104,7 @@ def train(config: dict):
         print("="*50 + "\n")
         
         display_manager = LiveStatsDisplay(env)
-        save_vision = config.get("DEBUG_SAVE_VISION_FEED", False)
-        callback = ComprehensiveCallback(display_manager, save_vision)
+        callback = ComprehensiveCallback(display_manager)
 
         while True:
             model.learn(total_timesteps=timesteps_per_iteration,

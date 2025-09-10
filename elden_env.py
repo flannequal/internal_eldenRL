@@ -8,8 +8,6 @@ from typing import Any, Dict, Optional, Tuple, Callable
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-import mss
-import cv2
 
 from elden_game import EldenRingGame
 from input_controller import InputController
@@ -34,7 +32,6 @@ class EldenEnv(gym.Env):
             
             self.game = EldenRingGame(config=env_config, arenas_path=arenas_path)
             self.input_controller = InputController(actions_config_path=actions_path)
-            self.sct = mss.mss()
 
             reward_schema = env_config.get("REWARD_SCHEMA", "standard")
             self.reward_calculator = RewardCalculator(reward_schema)
@@ -58,16 +55,12 @@ class EldenEnv(gym.Env):
         self.action_names = [v['name'] for v in self.actions_config.values()]
         self.action_counts = {name: 0 for name in self.action_names}
 
-        self.observation_space = spaces.Dict({
-            "vision": spaces.Box(low=0, high=255, shape=(180, 320, 3), dtype=np.uint8),
-            "data": spaces.Box(low=0.0, high=1.0, shape=(2,), dtype=np.float32)
-        })
+        # Observation space is now just player HP and boss HP
+        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(2,), dtype=np.float32)
         
         self.last_player_hp = 1.0
         self.last_boss_hp = 1.0
-        self.last_distance = 0.0
         self.last_action_name = "N/A"
-        self.last_observation = None
 
     def _wait_for_condition(self, condition_func: Callable[[], Any], expected_value: Any = True, timeout: float = 3.0, poll_interval: float = 0.1) -> bool:
         """
@@ -82,14 +75,8 @@ class EldenEnv(gym.Env):
         logging.warning(f"Timeout waiting for condition '{condition_func.__name__}' to be {expected_value}.")
         return False
 
-    def _get_observation(self) -> Optional[Dict[str, np.ndarray]]:
+    def _get_observation(self) -> Optional[np.ndarray]:
         if not self.game: return None
-
-        monitor = self.sct.monitors[1]
-        sct_img = self.sct.grab(monitor)
-        frame = np.array(sct_img)
-        vision_obs = cv2.resize(frame, (320, 180))
-        vision_obs = cv2.cvtColor(vision_obs, cv2.COLOR_BGRA2RGB)
 
         player_stats = self.game.get_player_stats()
         boss_stats = self.game.get_boss_hp()
@@ -100,10 +87,7 @@ class EldenEnv(gym.Env):
         player_hp_norm = player_stats.get('hp', 0) / max(1, player_stats.get('max_hp', 1))
         boss_hp_norm = boss_stats[0] / max(1, boss_stats[1])
         
-        data_obs = np.array([player_hp_norm, boss_hp_norm], dtype=np.float32)
-
-        self.last_observation = {"vision": vision_obs, "data": data_obs}
-        return self.last_observation
+        return np.array([player_hp_norm, boss_hp_norm], dtype=np.float32)
 
     def reset(self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None) -> Tuple[Any, Dict[str, Any]]:
         super().reset(seed=seed)
@@ -164,8 +148,8 @@ class EldenEnv(gym.Env):
             logging.error("Failed to get initial observation after reset.")
             return self.observation_space.sample(), {"error": "initial_obs_failed"}
 
-        self.last_player_hp = initial_obs["data"][0]
-        self.last_boss_hp = initial_obs["data"][1]
+        self.last_player_hp = initial_obs[0]
+        self.last_boss_hp = initial_obs[1]
         self.action_counts = {name: 0 for name in self.action_names}
         
         logging.info("Environment reset successfully.")
@@ -186,8 +170,7 @@ class EldenEnv(gym.Env):
         if obs is None:
             return self.observation_space.sample(), 0.0, False, False, {"error": "obs_failed"}
 
-        player_hp_norm, boss_hp_norm = obs["data"]
-        distance = self.game.get_distance_to_boss() or self.last_distance
+        player_hp_norm, boss_hp_norm = obs
         
         terminated = (player_hp_norm <= 0.01)
         won = (boss_hp_norm <= 0.01)
@@ -198,13 +181,11 @@ class EldenEnv(gym.Env):
         total_reward, reward_breakdown = self.reward_calculator.calculate_reward(
             self.last_player_hp, player_hp_norm,
             self.last_boss_hp, boss_hp_norm,
-            distance, time_alive, terminated, won,
-            self.last_action_name
+            time_alive, terminated, won
         )
 
         self.last_player_hp = player_hp_norm
         self.last_boss_hp = boss_hp_norm
-        self.last_distance = distance
         self.last_info = {"reward_breakdown": reward_breakdown}
 
         return obs, total_reward, terminated, False, self.last_info
