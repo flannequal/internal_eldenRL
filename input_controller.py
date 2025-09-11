@@ -71,23 +71,15 @@ class InputController:
             logger.debug(f"(SIM) Action: {action_name}, Key: {key}")
             return action_name
 
-        # REVISED: Check if the key is a mouse button
+        # Simplified: All actions are treated as single, discrete events.
         if key in self._mouse_buttons:
             button_to_press = self._mouse_map.get(key)
             if button_to_press:
-                # A simple click is often too fast for games.
-                # A short press-and-hold is more reliable.
-                pydirectinput.mouseDown(button=button_to_press)
-                time.sleep(0.05) # Hold for 50ms
-                pydirectinput.mouseUp(button=button_to_press)
-        elif key in self._movement_keys:
-            # Handle continuous movement keys
-            for other_key in self._movement_keys:
-                if other_key != key:
-                    pydirectinput.keyUp(other_key)
-            pydirectinput.keyDown(key)
-        else: 
-            # Handle single-press keyboard actions
+                pydirectinput.click(button=button_to_press)
+        else:
+            # For keyboard, release all movement keys and press the new key.
+            # This prevents stuck keys but treats all actions as momentary.
+            self.release_all()
             pydirectinput.press(key)
             
         return action_name

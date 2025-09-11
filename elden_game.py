@@ -209,31 +209,7 @@ class EldenRingGame:
         self.mem.write_pointer("PlayerAnimationOverride", value)
 
     def get_player_position(self) -> Optional[Tuple[float, float, float]]:
-        use_chain = self.config.get("USE_POINTER_CHAIN_FOR_PLAYER_POS", False)
-
-        # Pointer chain method (potentially unstable)
-        if use_chain:
-            try:
-                world_chr_man_ptr = self.mem._get_address_from_config("WorldChrMan")
-                if world_chr_man_ptr:
-                    p = self.mem.read_longlong(world_chr_man_ptr)
-                    if p:
-                        p = self.mem.read_longlong(p + 0x1E508)
-                        if p:
-                            p = self.mem.read_longlong(p + 0x190)
-                            if p:
-                                p = self.mem.read_longlong(p + 0x68)
-                                if p:
-                                    x = self.mem.read_float(p + 0x70)
-                                    y = self.mem.read_float(p + 0x74)
-                                    z = self.mem.read_float(p + 0x78)
-                                    if x is not None and y is not None and z is not None:
-                                        logging.debug("Player position found via pointer chain.")
-                                        return x, y, z
-            except Exception as e:
-                logging.error(f"Error getting player position via pointer chain: {e}")
-
-        # Direct pointer method (more stable)
+        # Using direct pointer method as it's more stable.
         try:
             _, x = self.mem.read_pointer("xPlayer")
             _, y = self.mem.read_pointer("yPlayer")
@@ -244,7 +220,7 @@ class EldenRingGame:
         except Exception as e:
             logging.error(f"Error getting player position via direct pointers: {e}")
 
-        logging.error("Failed to get player position using all available methods.")
+        logging.error("Failed to get player position.")
         return None
 
     def set_player_angle(self, cos_z: float, sin_z: float):
