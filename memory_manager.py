@@ -5,7 +5,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import pymem
-import pymem.process
+import pymem.process 
 import yaml
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -15,14 +15,14 @@ class MemoryManager:
     Handles low-level memory operations for the Elden Ring process, including
     process attachment, pointer chain resolution, and reading/writing memory.
     """
-
+    
     def __init__(self, process_name: str = "eldenring.exe"):
         self.process_name = process_name
         self.pm: Optional[pymem.Pymem] = None
         self.module_base: int = 0
         self.config: Dict[str, Any] = {}
         self.attached = False
-        self._resolve_cache: Dict[str, Optional[int]] = {}
+        self._resolve_cache: Dict[str, Optional[int]] = {}  
 
     def attach(self) -> bool:
         """

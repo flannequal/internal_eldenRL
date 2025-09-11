@@ -21,23 +21,23 @@ static_vars:
 # Each pointer has a 'base' (which must be a name from 'bases_static' or another pointer)
 # and a list of 'offsets'.
 pointers:
-  # Intermediate Pointers for clarity and structure
+  #intermediate Pointers for nicer structure
   LocalPlayer:
     base: WorldChrMan
-    offsets: [0x1E508] # Corrected offset based on Npc manager.lua
+    offsets: [0x1E508] 
     type: longlong
 
   PlayerStatsComponent:
     base: LocalPlayer
-    offsets: [0x190, 0x0] # This gets us to the stats component
+    offsets: [0x190, 0x0] 
     type: longlong
 
   PlayerTransformComponent:
     base: LocalPlayer
-    offsets: [0x190, 0x68] # This gets us to the transform/physics component
+    offsets: [0x190, 0x68] 
     type: longlong
 
-  # Player Stats (now based on the intermediate pointers)
+
   PlayerHP:
     base: PlayerStatsComponent
     offsets: [0x138]
@@ -96,11 +96,10 @@ pointers:
   PlayerAnimationOverride:
     base: LocalPlayer
     offsets: [0x190, 0x58, 0x18]
-    type: int # Usually -1 (off), can be set to an animation ID (e.g., 0 for idle)
+    type: int # -1 for off 0 for idle ;   set to an animation id
 
-# Teleport-specific pointers, mirroring the Cheat Engine table logic.
+
 teleport:
-  # Player's local coordinates (what we write to)
   xPlayer:
     base: PlayerTransformComponent
     offsets: [0x70]
@@ -114,7 +113,6 @@ teleport:
     offsets: [0x78]
     type: float
   
-  # Player's local orientation (what we write to)
   PlayerAngleCosZ:
     base: PlayerTransformComponent
     offsets: [0x54]
@@ -124,8 +122,7 @@ teleport:
     offsets: [0x5C]
     type: float
 
-  # Game's global coordinates (what we read from)
-  # This chain exactly matches "[[[[[[NetManImp]+ 80]+ E0] + 80] + 20] + 98] + 28"
+
   xGlobal:
     base: NetManImp
     offsets: [0x80, 0xE0, 0x80, 0x20, 0x98, 0x28]

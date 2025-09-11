@@ -32,6 +32,10 @@ Note: This project is standalone. Other projects like “SoulsGym” are referen
 - `NUMBER_DISCRETE_ACTIONS`: Total number of discrete actions for the agent.
 - `DISABLE_INPUT`: Set to `True` to disable keyboard input from the `InputController` (useful for debugging).
 - `TIME_ALIVE_PENALTY_PER_SECOND`: Negative reward applied per second alive (default: 1.0).
+
+
+
+
 - `NO_BOSS_HIT_PENALTY_PER_SECOND`: Negative reward applied per second without hitting the boss (default: 5.0).
 - `PROGRESS_REWARD_SCALE`: Scale for the reward based on boss HP lost (default: 150.0).
 
