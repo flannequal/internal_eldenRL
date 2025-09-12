@@ -109,29 +109,6 @@ class EldenRingGame:
             return None
         return None
 
-    def get_boss_position(self) -> Optional[Tuple[float, float, float]]:
-        if not self.boss_entity_addr:
-            logging.debug("get_boss_position failed: boss_entity_addr is not set.")
-            return None
-        try:
-            comp_ptr = self.mem.read_longlong(self.boss_entity_addr + 0x190)
-            if not comp_ptr:
-                logging.debug("get_boss_position failed: comp_ptr is null.")
-                return None
-            transform_ptr = self.mem.read_longlong(comp_ptr + 0x68)
-            if not transform_ptr:
-                logging.debug("get_boss_position failed: transform_ptr is null.")
-                return None
-            x = self.mem.read_float(transform_ptr + 0x70)
-            y = self.mem.read_float(transform_ptr + 0x74)
-            z = self.mem.read_float(transform_ptr + 0x78)
-            if x is not None and y is not None and z is not None:
-                return x, y, z
-        except Exception as e:
-            logging.error(f"Exception in get_boss_position: {e}")
-            return None
-        return None
-
     def set_boss_position(self, x: float, y: float, z: float):
         if not self.boss_entity_addr:
             return
@@ -146,19 +123,38 @@ class EldenRingGame:
         except Exception as e:
             logging.error(f"Failed to set boss position: {e}")
 
+    def get_entity_position(self, entity_addr: int) -> Optional[Tuple[float, float, float]]:
+        """Gets the world coordinates of any game entity, handling the game's Y/Z axis swap."""
+        if not entity_addr:
+            return None
+        try:
+            comp_ptr = self.mem.read_longlong(entity_addr + 0x190)
+            if not comp_ptr: return None
+            transform_ptr = self.mem.read_longlong(comp_ptr + 0x68)
+            if not transform_ptr: return None
+            
+            # Read coordinates based on memory layout (X, Z, Y)
+            x = self.mem.read_float(transform_ptr + 0x70)
+            z = self.mem.read_float(transform_ptr + 0x74) # This is the Z-axis (depth)
+            y = self.mem.read_float(transform_ptr + 0x78) # This is the Y-axis (vertical)
+            
+            if x is not None and y is not None and z is not None:
+                # Return in standard (X, Y, Z) order for calculations
+                return x, y, z
+        except Exception as e:
+            logging.error(f"Exception in get_entity_position for address {hex(entity_addr)}: {e}")
+        return None
+
     def get_distance_to_boss(self) -> Optional[float]:
         player_pos = self.get_player_position()
-        boss_pos = self.get_boss_position()
-        if not player_pos:
-            logging.warning("Could not calculate distance: Player position is unknown.")
+        boss_pos = self.get_entity_position(self.boss_entity_addr)
+        
+        if not player_pos or not boss_pos:
             return None
-        if not boss_pos:
-            logging.warning("Could not calculate distance: Boss position is unknown.")
-            return None
+            
         distance = math.sqrt(sum([(a - b) ** 2 for a, b in zip(player_pos, boss_pos)]))
-        logging.debug(f"Player pos: {player_pos}, Boss pos: {boss_pos}, Distance: {distance}")
         return distance
-
+    
     def is_in_cutscene(self) -> bool:
         _, value = self.mem.read_pointer("InCutscene")
         return value == 1
@@ -209,7 +205,6 @@ class EldenRingGame:
         self.mem.write_pointer("PlayerAnimationOverride", value)
 
     def get_player_position(self) -> Optional[Tuple[float, float, float]]:
-        # Using direct pointer method as it's more stable.
         try:
             _, x = self.mem.read_pointer("xPlayer")
             _, y = self.mem.read_pointer("yPlayer")

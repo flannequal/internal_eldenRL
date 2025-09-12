@@ -1,5 +1,5 @@
 import os
-import cv2
+import elden_game as game
 
 class LiveStatsDisplay:
     """
@@ -10,7 +10,7 @@ class LiveStatsDisplay:
         # Get action names from the environment for the display
         self.action_names = [v['name'] for v in env.actions_config.values()]
 
-    def print_update(self, env, fps: float, save_vision: bool):
+    def print_update(self, env, fps: float):
         """
         Clears the console and prints an updated block of stats.
         """
@@ -22,22 +22,17 @@ class LiveStatsDisplay:
 
         print("--- Elden Ring RL Live Stats ---")
 
-        if not obs:
+        if obs is None:
             print("No observation data available yet.")
             return
 
         # --- Core Stats ---
-        print(f"Player HP:    {obs['data'][0]:.2%}")
-        print(f"Boss HP:      {obs['data'][1]:.2%}")
-        print(f"Distance:     {env.last_distance:.2f}m")
+        print(f"Player HP:    {obs[0]:.2%}")
+        print(f"Boss HP:      {obs[1]:.2%}")
+        print(f"Distance:     {env.game.get_distance_to_boss():.2f}m")
         print(f"Last Action:  {action_name}")
         print(f"Loop FPS:     {fps:.2f}")
 
-        # --- Vision Feed ---
-        if save_vision and "vision" in obs:
-            img_bgr = cv2.cvtColor(obs["vision"], cv2.COLOR_RGB2BGR)
-            cv2.imwrite("debug_vision.png", img_bgr)
-            print("Vision Feed:  debug_vision.png (saved)")
 
         # --- Reward Breakdown ---
         if last_info and "reward_breakdown" in last_info:

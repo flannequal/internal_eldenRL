@@ -30,14 +30,11 @@ class RewardCalculator:
 
     def calculate_reward(self, last_player_hp: float, player_hp: float,
                          last_boss_hp: float, boss_hp: float,
-                         time_alive: float, terminated: bool, won: bool
+                         time_alive: float, dist_to_boss: float, terminated: bool, won: bool
                          ) -> tuple[float, Dict[str, float]]:
-        """
-        Calculates the total reward for a step based on the loaded schema.
-        """
+
         reward_breakdown = {}
 
-        # --- Damage and HP Changes ---
         boss_hp_diff = last_boss_hp - boss_hp
         reward_breakdown['boss_damage'] = boss_hp_diff * self.schema.get('boss_damage_multiplier', 0)
 
@@ -45,10 +42,8 @@ class RewardCalculator:
         if player_hp_diff > 0: # Player took damage
             reward_breakdown['hp_penalty'] = -player_hp_diff * self.schema.get('player_damage_penalty', 0)
 
-        # --- Time-based Rewards ---
         reward_breakdown['step_time_alive'] = self.schema.get('step_time_alive_reward', 0)
 
-        # --- Termination Rewards ---
         if terminated:
             if won:
                 reward_breakdown['win_bonus'] = self.schema.get('win_bonus', 0)

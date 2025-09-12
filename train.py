@@ -3,7 +3,7 @@ import logging
 import sys
 import time
 import yaml
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, DQN
 from stable_baselines3.common.callbacks import BaseCallback
 
 from elden_env import EldenEnv
@@ -53,7 +53,7 @@ class ComprehensiveCallback(BaseCallback):
             self.last_steps = self.num_timesteps
 
             env = self.training_env.envs[0].env
-            self.display_manager.print_update(env, self.fps, False)
+            self.display_manager.print_update(env, self.fps)
             self.last_print_time = current_time
 
         return True
@@ -88,12 +88,14 @@ def train(config: dict):
         os.remove(model_path)
 
     logging.info("Creating a new PPO model with MlpPolicy...")
-    model = PPO('MlpPolicy',
-                env,
-                tensorboard_log=logdir,
-                n_steps=2048,
-                verbose=1,
-                device='cuda')
+    # model = PPO('MlpLstmPolicy',
+    #             env,
+    #             tensorboard_log=logdir,
+    #             n_steps=2048,
+    #             verbose=1,
+    #             device='cuda')
+    
+    DQNmodel = DQN(policy='MlpPolicy', env=env, tensorboard_log=logdir, n_steps=2048, verbose=1, device='cuda')
 
     timesteps_per_iteration = config.get("TIMESTEPS_PER_ITERATION", 100000)
     try:
@@ -107,11 +109,11 @@ def train(config: dict):
         callback = ComprehensiveCallback(display_manager)
 
         while True:
-            model.learn(total_timesteps=timesteps_per_iteration,
+            DQNmodel.learn(total_timesteps=timesteps_per_iteration,
                         reset_num_timesteps=False,
                         tb_log_name="PPO",
                         callback=callback)
-            model.save(model_path)
+            DQNmodel.save(model_path)
             logging.info(f"\nModel updated and saved to {model_path}")
     except KeyboardInterrupt:
         logging.info("\nTraining interrupted by user.")
@@ -119,7 +121,7 @@ def train(config: dict):
         logging.error(f"\nAn error occurred during training: {e}", exc_info=True)
     finally:
         if 'model' in locals() and model_path:
-            model.save(model_path)
+            DQNmodel.save(model_path)
             logging.info(f"Final model saved to {model_path}")
         if 'env' in locals():
             env.close()

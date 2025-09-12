@@ -25,6 +25,7 @@ class EldenEnv(gym.Env):
         self.total_steps = 0
         self.episode_start_time = time.time()
         self.last_info = {}
+        self.last_observation = None
         
         try:
             arenas_path = os.path.join('config', 'arenas.yaml')
@@ -56,7 +57,7 @@ class EldenEnv(gym.Env):
         self.action_counts = {name: 0 for name in self.action_names}
 
         # Observation space is now just player HP and boss HP
-        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(2,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(3,), dtype=np.float32)
         
         self.last_player_hp = 1.0
         self.last_boss_hp = 1.0
@@ -80,16 +81,19 @@ class EldenEnv(gym.Env):
 
         player_stats = self.game.get_player_stats()
         boss_stats = self.game.get_boss_hp()
+        distance = self.game.get_distance_to_boss()
         
-        if not player_stats or not boss_stats:
+        if not player_stats or not boss_stats or distance is None :
             return None
 
         player_hp_norm = player_stats.get('hp', 0) / max(1, player_stats.get('max_hp', 1))
         boss_hp_norm = boss_stats[0] / max(1, boss_stats[1])
+        distance_norm = 1.0 - math.tanh(distance / 15.0)
         
-        return np.array([player_hp_norm, boss_hp_norm], dtype=np.float32)
+        self.last_observation = np.array([player_hp_norm, boss_hp_norm, distance_norm], dtype=np.float32)
+        return self.last_observation
 
-    def reset(self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None) -> Tuple[Any, Dict[str, Any]]:
+    def reset(self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None) -> Any:
         super().reset(seed=seed)
         if not self.game:
             return self.observation_space.sample(), {}
@@ -98,7 +102,7 @@ class EldenEnv(gym.Env):
         self.game.set_invisibility(True)
         self.game.set_player_animation_override(0)
 
-        # --- 1. Player Health and Stats Reset ---
+        #player health and stats reset
         player_stats = self.game.get_player_stats()
         if player_stats:
             max_hp = player_stats.get('max_hp', 1000)
@@ -107,22 +111,20 @@ class EldenEnv(gym.Env):
             # Wait for HP to be restored
             if not self._wait_for_condition(lambda: self.game.get_player_stats().get('hp'), max_hp):
                 logging.error("Player HP failed to restore during reset.")
-                # We still try to continue, as the next steps might fix it
+                #still continue as might be fixed after
 
         boss_stats = self.game.get_boss_hp()
         if boss_stats:
             self.game.set_boss_hp(boss_stats[1])
 
-        # --- 2. Teleport to Arena ---
+        # teleport to arena
         if not self.game.teleport_to_arena(self.arena_id):
             self.game.set_invisibility(False) # Make sure we are visible on failure
             return self.observation_space.sample(), {"error": "teleport_failed"}
 
-        # The teleport is now considered successful if the function returns true.
-        # A brief sleep is kept to allow game state to settle post-teleport.
         time.sleep(1.0)
 
-        # --- 3. Set Player Angle and Find Boss ---
+        #re-align player facing angle and re-fetch boss
         angle_config = self.arena_config.get("player_spawn_angle", {})
         self.game.set_player_angle(angle_config.get('cos_z', 1.0), angle_config.get('sin_z', 0.0))
 
@@ -161,16 +163,18 @@ class EldenEnv(gym.Env):
             return self.observation_space.sample(), 0.0, True, False, {}
 
         self.total_steps += 1
+        #logging actions for convenience
         self.last_action_name = self.input_controller.take_action(action)
         if self.last_action_name in self.action_counts:
             self.action_counts[self.last_action_name] += 1
-        time.sleep(0.1)
+            
+        #time.sleep(0.1)
 
         obs = self._get_observation()
         if obs is None:
             return self.observation_space.sample(), 0.0, False, False, {"error": "obs_failed"}
 
-        player_hp_norm, boss_hp_norm = obs
+        player_hp_norm, boss_hp_norm, distance_norm  = obs
         
         terminated = (player_hp_norm <= 0.01)
         won = (boss_hp_norm <= 0.01)
@@ -181,7 +185,7 @@ class EldenEnv(gym.Env):
         total_reward, reward_breakdown = self.reward_calculator.calculate_reward(
             self.last_player_hp, player_hp_norm,
             self.last_boss_hp, boss_hp_norm,
-            time_alive, terminated, won
+            time_alive, distance_norm, terminated, won
         )
 
         self.last_player_hp = player_hp_norm
