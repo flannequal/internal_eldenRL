@@ -1,16 +1,13 @@
-# This is the single source of truth for all agent actions.
-# It maps a descriptive action name to an action ID and a physical key/button.
 actions:
   0: { name: "stop", key: null }
   1: { name: "move_forward", key: "w" }
   2: { name: "move_backward", key: "s" }
   3: { name: "move_left", key: "a" }
   4: { name: "move_right", key: "d" }
-  5: { name: "light_attack", key: "mouse_left" } # Explicit key for left mouse button
+  5: { name: "light_attack", key: "o" } 
   6: { name: "dodge", key: "space" }
   7: { name: "jump", key: "f" }
   8: { name: "heal", key: "r" }
 
-# Special key bindings used by the input controller for complex actions.
 special_keys:
   sprint: "space"

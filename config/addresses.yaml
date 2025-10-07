@@ -1,7 +1,6 @@
-# This file defines all memory addresses, pointer chains, and offsets.
-# This version has been corrected to precisely match the working Cheat Engine scripts.
+# This file defines all memory addresses, pointer chains, and offsets
 
-# Static bases are defined as RVAs (Relative Virtual Addresses) from the module base.
+# Static bases are defined as RVAs (Relative Virtual Addresses) from the module base
 bases_static:
   WorldChrMan: 0x3D65F88
   GameDataMan: 0x3D5DF38
@@ -10,16 +9,16 @@ bases_static:
   LockTgtMan: 0x3D6A208
   NetManImp: 0x3D5AE60
   EventFlagMan: 0x3D68448
-
+  
 # Static variables are single values at a fixed RVA from the module base.
 static_vars:
   ChrDbgFlags:
     rva: 0x3D661A0
-    type: int # Bitmask for debug flags
+    type: int 
 
-# Pointers are complex addresses that require walking a pointer chain.
+# Pointers are complex addresses that require walking a pointer chain
 # Each pointer has a 'base' (which must be a name from 'bases_static' or another pointer)
-# and a list of 'offsets'.
+# and a list of 'offsets'
 pointers:
   #intermediate Pointers for nicer structure
   LocalPlayer:

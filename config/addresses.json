@@ -1,0 +1,206 @@
+{
+    "bases_static": {
+      "WorldChrMan": 64380808,
+      "GameDataMan": 64347960,
+      "GameMan": 64395544,
+      "FieldArea": 64393688,
+      "LockTgtMan": 64397832,
+      "NetManImp": 64335456,
+      "EventFlagMan": 64390216
+    },
+    "static_vars": {
+      "ChrDbgFlags": {
+        "rva": 64381344,
+        "type": "int"
+      }
+    },
+    "pointers": {
+      "LocalPlayer": {
+        "base": "WorldChrMan",
+        "offsets": [
+          124168
+        ],
+        "type": "longlong"
+      },
+      "PlayerStatsComponent": {
+        "base": "LocalPlayer",
+        "offsets": [
+          400,
+          0
+        ],
+        "type": "longlong"
+      },
+      "PlayerTransformComponent": {
+        "base": "LocalPlayer",
+        "offsets": [
+          400,
+          104
+        ],
+        "type": "longlong"
+      },
+      "PlayerHP": {
+        "base": "PlayerStatsComponent",
+        "offsets": [
+          312
+        ],
+        "type": "int"
+      },
+      "PlayerMaxHP": {
+        "base": "PlayerStatsComponent",
+        "offsets": [
+          316
+        ],
+        "type": "int"
+      },
+      "PlayerSP": {
+        "base": "PlayerStatsComponent",
+        "offsets": [
+          340
+        ],
+        "type": "int"
+      },
+      "PlayerMaxSP": {
+        "base": "PlayerStatsComponent",
+        "offsets": [
+          344
+        ],
+        "type": "int"
+      },
+      "PlayerMP": {
+        "base": "PlayerStatsComponent",
+        "offsets": [
+          328
+        ],
+        "type": "int"
+      },
+      "PlayerMaxMP": {
+        "base": "PlayerStatsComponent",
+        "offsets": [
+          336
+        ],
+        "type": "int"
+      },
+      "PlayerGravity": {
+        "base": "PlayerTransformComponent",
+        "offsets": [
+          467
+        ],
+        "type": "int"
+      },
+      "LastGrace": {
+        "base": "GameMan",
+        "offsets": [
+          2864
+        ],
+        "type": "int"
+      },
+      "InCutscene": {
+        "base": "EventFlagMan",
+        "offsets": [
+          40,
+          275
+        ],
+        "type": "byte"
+      },
+      "PlayerAnimation": {
+        "base": "LocalPlayer",
+        "offsets": [
+          400,
+          128,
+          144
+        ],
+        "type": "int"
+      },
+      "PlayerAnimationState": {
+        "base": "LocalPlayer",
+        "offsets": [
+          400,
+          24,
+          8
+        ],
+        "type": "byte"
+      },
+      "PlayerAnimationOverride": {
+        "base": "LocalPlayer",
+        "offsets": [
+          400,
+          88,
+          24
+        ],
+        "type": "int"
+      }
+    },
+    "teleport": {
+      "xPlayer": {
+        "base": "PlayerTransformComponent",
+        "offsets": [
+          112
+        ],
+        "type": "float"
+      },
+      "zPlayer": {
+        "base": "PlayerTransformComponent",
+        "offsets": [
+          116
+        ],
+        "type": "float"
+      },
+      "yPlayer": {
+        "base": "PlayerTransformComponent",
+        "offsets": [
+          120
+        ],
+        "type": "float"
+      },
+      "PlayerAngleCosZ": {
+        "base": "PlayerTransformComponent",
+        "offsets": [
+          84
+        ],
+        "type": "float"
+      },
+      "PlayerAngleSinZ": {
+        "base": "PlayerTransformComponent",
+        "offsets": [
+          92
+        ],
+        "type": "float"
+      },
+      "xGlobal": {
+        "base": "NetManImp",
+        "offsets": [
+          128,
+          224,
+          128,
+          32,
+          152,
+          40
+        ],
+        "type": "float"
+      },
+      "zGlobal": {
+        "base": "NetManImp",
+        "offsets": [
+          128,
+          224,
+          128,
+          32,
+          152,
+          28
+        ],
+        "type": "float"
+      },
+      "yGlobal": {
+        "base": "NetManImp",
+        "offsets": [
+          128,
+          224,
+          128,
+          32,
+          152,
+          44
+        ],
+        "type": "float"
+      }
+    }
+  }
