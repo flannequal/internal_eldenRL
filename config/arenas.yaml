@@ -1,11 +1,7 @@
-# Arena metadata (per boss)
-
-process_name: eldenring.exe
-
 arenas:
   - id: 8
     name: Beastman
-    nearest_bonfire_key: 'Limgrave - Groveside Cave'
+    nearest_bonfire_key: Limgrave - Groveside Cave
     player_spawn:
       x: 3613.126708984375
       z: 89.67256927490234

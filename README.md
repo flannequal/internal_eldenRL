@@ -1,129 +1,139 @@
-# EldenRL (Hybrid) – Single pipeline using vision + memory
+## EldenRL
 
-EldenRL uses one unified environment that combines a real game image (for spatial context) with precise state read from game memory (hp, stamina, boss hp, etc.). Rewards and termination come from memory; the image is for perception of obstacles and motion.
+A reinforcement learning environment for Elden Ring boss fights
 
-## Requirements
-- Windows 10/11
-- elden ring offline, developed in v1.16 (DLC inc)
-- Python 3.9+
-- Stable-Baselines3, PyTorch (--index-url https://download.pytorch.org/whl/cu126  {ur cuda ver at 126 using nvcc -V })
-- OpenCV, `mss`
-  
-Note: This project is standalone. Other projects like “SoulsGym” are reference-only (useful for ideas).
+The agent sees a downscaled capture of the game window,
+but most rewards and some mixed-observations come from the internal memory. HP, boss HP, world coordinates and cutscene state are
+resolved through pointers
 
-## Quick start
+This is an extensions/rewrite of [ocram444/EldenRL](https://github.com/ocram444/EldenRL),
+which reads the same values with OCR and template matching against the HUD
 
-1. Install dependencies (venv recommended) with requirements-pip.txt
-2. Configure `main.py` (Hybrid is default)
-3. Run `python main.py`
 
-## Configuration
+**Observation**:
 
-`main.py` exposes the runtime config. Key fields:
+| Key | Shape | Contents |
+| --- | --- | --- |
+| vision | (90, 160, 3) uint8 | RGB screen capture |
+| data | (2,) float32 | normalised player HP, normalised boss HP |
 
-- `PROCESS_NAME`: Game executable name (default: `eldenring.exe`).
-- `GAME_MODE`: "PVE" for boss fights, other values for PvP/general exploration (default: "PVE").
-- `BOSS`: ID of the boss arena to train in (from `config/arenas.yaml`).
-- `DESIRED_FPS`: Target frames per second for the environment step loop.
-- `LOG_MEMORY_DEBUG`: Enable verbose memory reading logs.
-- `MEMORY_DEBUG_INTERVAL`: Interval in steps for memory debug logs.
-- `MONITOR`: Monitor index for screen capture (e.g., 1 for primary monitor).
-- `DEBUG_MODE`: Enable debug overlay on the captured image.
-- `NUMBER_DISCRETE_ACTIONS`: Total number of discrete actions for the agent.
-- `DISABLE_INPUT`: Set to `True` to disable keyboard input from the `InputController` (useful for debugging).
-- `TIME_ALIVE_PENALTY_PER_SECOND`: Negative reward applied per second alive (default: 1.0).
-- `NO_BOSS_HIT_PENALTY_PER_SECOND`: Negative reward applied per second without hitting the boss (default: 5.0).
-- `PROGRESS_REWARD_SCALE`: Scale for the reward based on boss HP lost (default: 150.0).
+**Rewards**:
 
-The `config/app.yaml` (or `app.sample.yaml`) file provides a central place for these settings.
-Memory addresses, AOB patterns, arena spawn points, and bonfire IDs are managed in:
-- `config/addresses.yaml`
-- `config/arenas.yaml`
-- `config/bonfires.yaml`
+| Component | When |
+| --- | --- |
+| boss_damage | +150 x fraction of boss HP removed this step |
+| hp_penalty | -100 x fraction of player HP lost this step |
+| distance | shaped by TRAINING_MODE, zero in standard |
+| time_alive | +0.1 per second survived, paid out on termination |
+| win_bonus / lose_penalty | +200 on a kill, -100 on a death |
 
-## Architecture
+on a  episode reset, we wait for the death or cutscene transition to clear (sped up ingame time),
+teleport to the arena coordinates, scan `WorldChrMan`'s character list for the
+boss's `char_param_id`, lock on, then start agent
+
+### memory access
+
+Addresses are in `config/addresses.yaml` as ptr chains.
+I manually extracted from the respective CE tables, and re-resolved for 1.16 version of the game,
+since some bases were outdated
+
+
+`MemoryManager.resolve()` flattens a chain recursively to its static base, walks
+it, and caches the result. Teleporting reads the player's local coordinates and
+the world's global coordinates, applies the offset between them, disables
+gravity, writes, and re-enables gravity once the position settles.
+
+pointer chains traced from two CE tables; the scripts they came
+from are in [`tools/ct_scripts/`](tools/ct_scripts/)
+
+### setup
+
+- Elden Ring 1.16 with the Erdtree DLC
+- windows, python 3.9+
+- a NVIDIA GPU
+
+```bash
+pip install -r requirements.txt
+pip install torch --index-url https://download.pytorch.org/whl/cu126  # match your cuda
+```
+
+Verify the pointer chains resolve against your build, every line should read ok:
+
+```bash
+python tools/memory_check.py
+```
+
+```bash
+python main.py                      # train on the arena set from config/app.yaml
+tensorboard --logdir logs/      #watch rewards
+```
+
+
+### Config
+
+`config/app.yaml`:
+
+| Const | Value |
+| --- | --- |
+| `DISABLE_INPUT` | Log actions instead of sending keys |
+| `BOSS` | the boss arena id from `config/arenas.yaml` |
+| `TIMESTEPS_PER_ITERATION` | Steps between checkpoints |
+| `TRAINING_MODE` | `standard`, `aggressive`, `defensive` for distance shaping |
+
+Other files: `actions.yaml` (action id to key), `arenas.yaml` (spawn point and
+boss id per arena), `addresses.yaml` (pointer chains), `bonfires.yaml` (grace
+ids), `locations.json` (saved teleport targets).
+
+## teleporting cli
+
+Capturing a new arena spawn point is easier than typing the coordinates, so just go stand where
+you want the agent to start (for example this beastman bonfire) and:
+
+```bash
+python tools/tp_cli.py save beastman
+python tools/tp_cli.py list
+python tools/tp_cli.py go beastman
+python tools/tp_cli.py delete beastman
+```
+
+Then copy the saved coordinates into a new `arenas.yaml` entry
+
+
+
+### structure
 
 ```mermaid
 flowchart LR
-  A[SB3 PPO Agent] --> H[EldenHybridEnv]
+    subgraph agent [ ]
+        PPO[SB3 PPO<br/>MultiInputPolicy]
+    end
 
-  H --> C[InputController]
-  C --> G[EldenRingGame]
+    PPO -->|action| ENV[EldenEnv]
+    ENV -->|obs, reward| PPO
 
-  G --> D[MemoryManager]
-  D <--> M[(Game Memory)]
+    ENV --> IC[InputController]
+    ENV --> SCT[mss screen capture]
+    ENV --> GAME[EldenRingGame]
 
-  %% Data/config side
-  G --> F1[(Arenas Config YAML)]
-  G --> F2[(Bonfires Config YAML)]
-  D --> F3[(Addresses Config YAML)]
+    IC -->|synthetic keys| WIN[(eldenring.exe)]
+    SCT -->|frame| ENV
 
-  subgraph Future/Planned
-    S[SignatureScanner]
-    O[OffsetDB]
-    V[VersionCompatibility]
-    AC[AntiCheatMitigation]
-  end
-  D -. integrates .-> S
-  S -. feeds .-> O
-  O -. used by .-> D
-  D -. version gate .-> V
-  D -. safety .-> AC
+    GAME --> MEM[MemoryManager]
+    GAME --> TP[TeleportManager]
+    MEM <-->|pointer chains| WIN
+    TP -->|coordinate writes| MEM
+
+    MEM -.-> ADDR[(addresses.yaml)]
+    GAME -.-> AREN[(arenas.yaml)]
+    TP -.-> LOC[(locations.json)]
+    IC -.-> ACT[(actions.yaml)]
 ```
-## Memory Address Architecture
-
-To ensure stability across game restarts, this project does **not** use hardcoded memory addresses. Instead, it uses a multi-level pointer system common in game hacking, originating from tools like Cheat Engine. The process is defined in `config/addresses.yaml` and works as follows:
-
-1.  **Find the Game's Base Address:** The program first finds the memory address where `eldenring.exe` is loaded. This address changes every time the game starts (due to ASLR).
-
-2.  **Locate the Static Pointer:** The `bases_static` section of the config contains a list of **Relative Virtual Addresses (RVAs)**. An RVA is a fixed offset from the game's base address.
-    *   The program calculates: `Static Pointer Address = Game Base Address + RVA`
-    *   This address points to a **global pointer**, which acts as a stable "signpost" to a dynamic game structure.
-
-3.  **Dereference to Find the True Base Address:** The program then reads the 8-byte value *at* the `Static Pointer Address`. This value is the **true, dynamic base address** of a core game structure (e.g., `WorldChrMan`). This address is dynamic and can change.
-
-4.  **Follow the Offset Chain:** The `addresses` section of the config defines chains of offsets for specific values (like `PlayerHP`). Starting from the **true base address** found in Step 3, the program follows this chain:
-    *   It reads the pointer at `(address + offset1)`.
-    *   Then it reads the pointer at `(new_address + offset2)`.
-    *   ...and so on, until the final offset is added to find the memory location of the desired value (e.g., the integer for the player's current health).
-
-This multi-step process allows the program to reliably find game data even though the memory layout changes on each launch.
 
 
-## Observation and rewards
-- Observation (default):
-  - `img`: `(MODEL_HEIGHT, MODEL_WIDTH, 3)` uint8
-  - `prev_actions`: `(10, NUMBER_DISCRETE_ACTIONS, 1)` uint8
-  - `state`: `(7,)` float32 = `[player_hp, player_stamina, boss_hp, time_alive_s, arena_phase, dist_to_boss, time_since_boss_dmg]`
+### Credits
 
-- Reward/termination: computed purely from memory values, logic now integrated directly into `EldenHybridEnv`.
-
-## Requirements for real memory backend
-
-- Elden Ring process must be running and accessible.
-- Game must be in single-player offline mode.
-- Memory addresses and AOB patterns in `config/addresses.yaml` must match your game version (v16 when made)
-- Using a new game save is recommended for safety
-
-TPData teleport tools
-
-exact memory-flow Hexinton CE table used:
-
-Read the games global coordinate floats (the same values CE’s “copypaste current coords” reads from NetManImp).
-
-Pack those floats (plus the bonfire ID word) into a 32-byte TPData blob (exact CE layout).
-
-Write that TPData blob into the game process (VirtualAllocEx + WriteProcessMemory) — exactly like CE’s alloc(TPData,32,"eldenring.exe") + readmem(...)->TPData.
-
-Invoke the teleport logic by reading floats back from TPData and performing the same math CE’s InvokeTP does, then writing the resulting player-local floats into the player pointers (with gravity toggled while it writes).
-
-
-## Contributing
-- You can contribute by extending the YAML configuration files with new addresses or arena data.
-- Develop new `MemoryManager` methods for raw memory operations or `EldenRingGame` properties/methods for high-level game interactions.
-
-## Credits
-
-This project builds on the original EldenRL work
-
-
+- [ocram444/EldenRL](https://github.com/ocram444/EldenRL): original rl in eldenring project
+- [SoulsGym](https://github.com/amacati/SoulsGym): prior for memory-driven
+  souls game environments, studied while building this
+- The Hexinton all-in-one and ER TGA CE tables: source of the pointer
+  chains and warp logic that I ported to python

@@ -1,7 +1,4 @@
-# This file defines all memory addresses, pointer chains, and offsets.
-# This version has been corrected to precisely match the working Cheat Engine scripts.
-
-# Static bases are defined as RVAs (Relative Virtual Addresses) from the module base.
+# rvas from the module base
 bases_static:
   WorldChrMan: 0x3D65F88
   GameDataMan: 0x3D5DF38
@@ -10,27 +7,23 @@ bases_static:
   LockTgtMan: 0x3D6A208
   NetManImp: 0x3D5AE60
   EventFlagMan: 0x3D68448
-# Pointers are complex addresses that require walking a pointer chain.
-# Each pointer has a 'base' (which must be a name from 'bases_static' or another pointer)
-# and a list of 'offsets'.
+
 pointers:
-  # Intermediate Pointers for clarity and structure
   LocalPlayer:
     base: WorldChrMan
-    offsets: [0x10EF8, 0x0] # This chain gets us to the player's base entity
+    offsets: [0x10EF8, 0x0]
     type: longlong
 
   PlayerStatsComponent:
     base: LocalPlayer
-    offsets: [0x190, 0x0] # This gets us to the stats component
+    offsets: [0x190, 0x0]
     type: longlong
 
   PlayerTransformComponent:
     base: LocalPlayer
-    offsets: [0x190, 0x68] # This gets us to the transform/physics component
+    offsets: [0x190, 0x68]
     type: longlong
 
-  # Player Stats (now based on the intermediate pointers)
   PlayerHP:
     base: PlayerStatsComponent
     offsets: [0x138]
@@ -70,10 +63,10 @@ pointers:
     base: GameMan
     offsets: [0xB30]
     type: int
-    
+
   InCutscene:
     base: EventFlagMan
-    offsets: [0x28,0x113]
+    offsets: [0x28, 0x113]
     type: byte
 
   PlayerAnimation:
@@ -81,9 +74,8 @@ pointers:
     offsets: [0x190, 0x80, 0x90]
     type: int
 
-# Teleport-specific pointers, mirroring the Cheat Engine table logic.
+# globals hold the world offset
 teleport:
-  # Player's local coordinates (what we write to)
   xPlayer:
     base: PlayerTransformComponent
     offsets: [0x70]
@@ -96,9 +88,7 @@ teleport:
     base: PlayerTransformComponent
     offsets: [0x78]
     type: float
-  
-  # Game's global coordinates (what we read from)
-  # This chain exactly matches "[[[[[[NetManImp]+ 80]+ E0] + 80] + 20] + 98] + 28"
+
   xGlobal:
     base: NetManImp
     offsets: [0x80, 0xE0, 0x80, 0x20, 0x98, 0x28]
